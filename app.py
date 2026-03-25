@@ -10,7 +10,7 @@ from io import BytesIO
 st.set_page_config(page_title="Stock System", layout="centered")
 
 # ======================
-# CONNECT DATABASE (NEON)
+# CONNECT DB (NEON)
 # ======================
 conn = psycopg2.connect(
     "postgresql://neondb_owner:npg_X3xpmLBGVfP7@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
@@ -26,6 +26,14 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
     password TEXT,
     role TEXT
+);
+""")
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS item_master (
+    itemkey TEXT PRIMARY KEY,
+    description TEXT,
+    unit TEXT
 );
 """)
 
@@ -101,6 +109,45 @@ if st.button("Logout"):
     st.rerun()
 
 # ======================
+# UPLOAD ITEM MASTER
+# ======================
+st.markdown("## 📦 Upload Item Master")
+
+file = st.file_uploader("Upload Excel Item Master", type=["xlsx"])
+
+if file:
+    df_master = pd.read_excel(file)
+
+    if st.button("💾 Save Item Master"):
+        for _, row in df_master.iterrows():
+            c.execute("""
+            INSERT INTO item_master (itemkey, description, unit)
+            VALUES (%s,%s,%s)
+            ON CONFLICT (itemkey) DO UPDATE
+            SET description=EXCLUDED.description,
+                unit=EXCLUDED.unit;
+            """, (
+                row["Itemkey"],
+                row["Description"],
+                row["Unit"]
+            ))
+
+        st.success("Upload thành công!")
+
+# ======================
+# LOAD ITEM LIST
+# ======================
+df_items = pd.read_sql("SELECT * FROM item_master", conn)
+
+# ======================
+# SEARCH FUNCTION
+# ======================
+def search_items(keyword):
+    if not keyword:
+        return df_items.head(50)
+    return df_items[df_items["itemkey"].str.contains(keyword, case=False)]
+
+# ======================
 # FORMS
 # ======================
 forms = ["Component", "Scrap", "RM", "FG", "Regran"]
@@ -111,13 +158,31 @@ for i, tab in enumerate(tabs):
         st.subheader(forms[i])
 
         if st.session_state.role != "viewer":
-            item = st.text_input("Itemkey", key=f"item_{i}")
+
+            # 🔍 SEARCH BOX
+            keyword = st.text_input("🔍 Search Item", key=f"search_{i}")
+
+            filtered = search_items(keyword)
+
+            item = st.selectbox(
+                "Chọn Item",
+                filtered["itemkey"].tolist(),
+                key=f"item_{i}"
+            )
+
+            # 📷 BARCODE INPUT
+            barcode = st.text_input("📷 Scan Barcode", key=f"barcode_{i}")
+
+            if barcode:
+                item = barcode
+
             qty = st.number_input("Quantity", min_value=0.0, key=f"qty_{i}")
             loc = st.text_input("Location", key=f"loc_{i}")
 
             if st.button("💾 Save", key=f"save_{i}"):
-                if item.strip() == "":
-                    st.error("Itemkey required")
+
+                if not item:
+                    st.error("Chọn Item")
                 else:
                     c.execute("""
                     INSERT INTO transactions (form,itemkey,quantity,location,created_by)
@@ -129,7 +194,7 @@ for i, tab in enumerate(tabs):
                     VALUES (%s,%s)
                     """, (f"Insert {forms[i]}", st.session_state.user))
 
-                    st.success("Saved!")
+                    st.success(f"Saved: {item}")
 
         # ======================
         # FILTER
@@ -155,9 +220,7 @@ for i, tab in enumerate(tabs):
 
         st.dataframe(df, use_container_width=True)
 
-        # ======================
         # EXPORT
-        # ======================
         if not df.empty:
             csv = df.to_csv(index=False).encode("utf-8")
             st.download_button("📥 CSV", csv, f"{forms[i]}.csv")
@@ -165,11 +228,7 @@ for i, tab in enumerate(tabs):
             output = BytesIO()
             df.to_excel(output, index=False, engine="openpyxl")
 
-            st.download_button(
-                "📥 Excel",
-                output.getvalue(),
-                f"{forms[i]}.xlsx"
-            )
+            st.download_button("📥 Excel", output.getvalue(), f"{forms[i]}.xlsx")
 
 # ======================
 # DASHBOARD
@@ -183,7 +242,7 @@ if not df_all.empty:
     st.bar_chart(df_all.groupby("location")["quantity"].sum())
 
 # ======================
-# LOG (ADMIN)
+# LOG
 # ======================
 if st.session_state.role == "admin":
     st.markdown("## 📜 Logs")

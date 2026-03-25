@@ -13,7 +13,7 @@ st.set_page_config(page_title="Stock System", layout="centered")
 # CONNECT DB (NEON)
 # ======================
 conn = psycopg2.connect(
-    "postgresql://neondb_owner:npg_X3xpmLBGVfP7@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
+    "postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 )
 conn.autocommit = True
 c = conn.cursor()
@@ -60,8 +60,11 @@ CREATE TABLE IF NOT EXISTS logs (
 
 # default admin
 c.execute("""
-INSERT INTO users (username,password,role)
-VALUES ('admin','123','admin')
+INSERT INTO users (username,password,role) VALUES
+('admin','123','admin'),
+('user1','user1','user'),
+('user2','user2','user'),
+('user3','user3','user')
 ON CONFLICT (username) DO NOTHING;
 """)
 

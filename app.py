@@ -405,8 +405,9 @@ confirm = st.checkbox(
     key="confirm_admin"
 )
 
-if st.button("✅ Submit All Draft", key=f"submit_{i}"):
-
+#if st.button("✅ Submit All Draft", key=f"submit_{i}"):
+if st.button("✅ Submit All Draft", key="submit_admin"):
+    
     if not confirm:
         st.warning("⚠️ Please confirm before submit")
         st.stop()

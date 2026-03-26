@@ -1,4 +1,4 @@
-# ERP AUDIT LEVEL 2 (FULL - KEEP ALL FEATURES + LOCK + ADMIN EDIT + AUDIT LOG)
+# ERP AUDIT LEVEL 2 (FULL - KEEP ALL FEATURES + COUNTER/SUPERVISOR + LOCK + ADMIN EDIT + AUDIT LOG)
 
 import streamlit as st
 import pandas as pd
@@ -58,7 +58,6 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 """)
 
-# NEW: audit log
 c.execute("""
 CREATE TABLE IF NOT EXISTS audit_log (
     id SERIAL PRIMARY KEY,
@@ -71,7 +70,6 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 """)
 
-# NEW: lock control
 c.execute("""
 CREATE TABLE IF NOT EXISTS app_control (
     id INT PRIMARY KEY,
@@ -97,11 +95,28 @@ if "user" not in st.session_state:
     st.session_state.user = None
     st.session_state.role = None
 
+# ================= HELPER =================
+def split_emp(text):
+    emp_id = text.split(" - ")[0]
+    name = text.split(" - ")[1].split(" (")[0]
+    phone = text.split("(")[1].replace(")", "")
+    return emp_id, name, phone
+
 # ================= LOGIN =================
 if not st.session_state.get("user"):
     st.title("🔐 Login")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
+
+    df_emp = pd.read_sql("SELECT * FROM employees", conn)
+    emp_options = df_emp.apply(
+        lambda x: f"{x['emp_id']} - {x['emp_name']} ({x['phone']})", axis=1
+    ).tolist()
+
+    st.markdown("### 👷 Thông tin ca kiểm kê")
+
+    counter_select = st.selectbox("Counter", emp_options) if emp_options else st.text_input("Counter (ID - Name (Phone))")
+    supervisor_select = st.selectbox("Supervisor", emp_options) if emp_options else st.text_input("Supervisor (ID - Name (Phone))")
 
     if st.button("Login"):
         df = pd.read_sql(
@@ -110,48 +125,56 @@ if not st.session_state.get("user"):
             params=(username, password)
         )
 
-        if not df.empty:
+        if not df.empty and counter_select and supervisor_select:
             st.session_state.user = username
             st.session_state.role = df.iloc[0]["role"]
+
+            def add_emp(emp_text):
+                emp_id, name, phone = split_emp(emp_text)
+                c.execute("""
+                INSERT INTO employees (emp_id, emp_name, phone)
+                VALUES (%s,%s,%s)
+                ON CONFLICT (emp_id) DO UPDATE
+                SET emp_name=EXCLUDED.emp_name,
+                    phone=EXCLUDED.phone
+                """, (emp_id, name, phone))
+                return emp_id, name, phone
+
+            c_id, c_name, c_phone = add_emp(counter_select)
+            s_id, s_name, s_phone = add_emp(supervisor_select)
+
+            st.session_state.counter_id = c_id
+            st.session_state.counter = c_name
+            st.session_state.counter_phone = c_phone
+            st.session_state.supervisor_id = s_id
+            st.session_state.supervisor = s_name
+            st.session_state.supervisor_phone = s_phone
+
             st.success("Login success")
             st.rerun()
         else:
-            st.error("Sai tài khoản")
+            st.error("Thiếu thông tin")
 
     st.stop()
 
 # ================= HEADER =================
 st.title(f"📦 ERP Audit - {st.session_state.user}")
+st.markdown(f"Counter: {st.session_state.get('counter','')} | Supervisor: {st.session_state.get('supervisor','')}")
 
-if st.button("Logout"):
-    st.session_state.user = None
-    st.rerun()
-
-# ================= LOCK STATUS =================
+# ================= LOCK =================
 locked = is_locked()
 
-if locked and st.session_state.role != "admin":
-    st.warning("🔒 System đang bị khóa")
-
-# ================= ADMIN CONTROL =================
 if st.session_state.role == "admin":
-    st.markdown("## 🔧 Admin Control")
-
     col1, col2 = st.columns(2)
-    if col1.button("🔒 Lock App"):
+    if col1.button("🔒 Lock"):
         set_lock(True)
         st.rerun()
-    if col2.button("🔓 Unlock App"):
+    if col2.button("🔓 Unlock"):
         set_lock(False)
         st.rerun()
 
-# ================= LOAD ITEMS =================
-df_items = pd.read_sql("SELECT * FROM item_master", conn)
-
-def search_items(keyword):
-    if not keyword:
-        return df_items.head(50)
-    return df_items[df_items["itemkey"].str.contains(keyword, case=False)]
+if locked and st.session_state.role != "admin":
+    st.warning("🔒 System locked")
 
 # ================= FORMS =================
 forms = ["Component", "Scrap", "RM", "FG", "Regran"]
@@ -159,23 +182,26 @@ tabs = st.tabs(forms)
 
 for i, tab in enumerate(tabs):
     with tab:
-        st.subheader(forms[i])
-
-        keyword = st.text_input("Search Item", key=f"s_{i}")
-        filtered = search_items(keyword)
-
-        item = st.selectbox("Item", filtered["itemkey"].tolist(), key=f"i_{i}")
-        qty = st.number_input("Quantity", min_value=0.0, key=f"q_{i}")
+        item = st.text_input("Item", key=f"i_{i}")
+        qty = st.number_input("Qty", key=f"q_{i}")
         loc = st.text_input("Location", key=f"l_{i}")
 
-        if locked and st.session_state.role != "admin":
-            st.warning("🔒 Locked - cannot input")
-        else:
-            if st.button("Save", key=f"save_{i}"):
+        if not (locked and st.session_state.role != "admin"):
+            if st.button("Save", key=f"s_{i}"):
                 c.execute("""
-                INSERT INTO transactions (form,itemkey,quantity,location,created_by)
-                VALUES (%s,%s,%s,%s,%s)
-                """, (forms[i], item, qty, loc, st.session_state.user))
+                INSERT INTO transactions (form,itemkey,quantity,location,created_by,
+                counter_id,counter_name,counter_phone,
+                supervisor_id,supervisor_name,supervisor_phone)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    forms[i], item, qty, loc, st.session_state.user,
+                    st.session_state.counter_id,
+                    st.session_state.counter,
+                    st.session_state.counter_phone,
+                    st.session_state.supervisor_id,
+                    st.session_state.supervisor,
+                    st.session_state.supervisor_phone
+                ))
                 st.success("Saved")
 
         df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
@@ -184,52 +210,33 @@ for i, tab in enumerate(tabs):
 # ================= ADMIN EDIT =================
 if st.session_state.role == "admin":
     st.markdown("## ✏️ Edit Transaction")
-
     df_edit = pd.read_sql("SELECT * FROM transactions", conn)
 
     if not df_edit.empty:
         selected_id = st.selectbox("ID", df_edit["id"])
         row = df_edit[df_edit["id"] == selected_id].iloc[0]
 
-        new_qty = st.number_input("Quantity", value=float(row["quantity"]))
+        new_qty = st.number_input("Qty", value=float(row["quantity"]))
         new_loc = st.text_input("Location", value=row["location"])
 
         if st.button("Update"):
             old_data = row.to_json()
+            c.execute("UPDATE transactions SET quantity=%s, location=%s WHERE id=%s",
+                      (new_qty, new_loc, selected_id))
 
-            c.execute("""
-            UPDATE transactions SET quantity=%s, location=%s WHERE id=%s
-            """, (new_qty, new_loc, selected_id))
-
-            new_data = {"qty": new_qty, "loc": new_loc}
-
-            c.execute("""
-            INSERT INTO audit_log (trans_id, action, old_data, new_data, changed_by)
-            VALUES (%s,%s,%s,%s,%s)
-            """, (selected_id, "UPDATE", old_data, str(new_data), st.session_state.user))
+            c.execute("INSERT INTO audit_log (trans_id,action,old_data,new_data,changed_by)
+                      VALUES (%s,%s,%s,%s,%s)",
+                      (selected_id, "UPDATE", old_data, str({"qty": new_qty}), st.session_state.user))
 
             st.success("Updated + Logged")
             st.rerun()
 
-# ================= AUDIT LOG VIEW =================
+# ================= AUDIT =================
 if st.session_state.role == "admin":
     st.markdown("## 📜 Audit Log")
-    df_log = pd.read_sql("SELECT * FROM audit_log ORDER BY changed_at DESC", conn)
-    st.dataframe(df_log)
-
-# ================= EXPORT =================
-df_all = pd.read_sql("SELECT * FROM transactions", conn)
-
-if not df_all.empty:
-    csv = df_all.to_csv(index=False).encode("utf-8")
-    st.download_button("Download CSV", csv, "transactions.csv")
-
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_all.to_excel(writer, index=False)
-    st.download_button("Download Excel", output.getvalue(), "transactions.xlsx")
+    st.dataframe(pd.read_sql("SELECT * FROM audit_log ORDER BY changed_at DESC", conn))
 
 # ================= DASHBOARD =================
+df_all = pd.read_sql("SELECT * FROM transactions", conn)
 if not df_all.empty:
-    st.markdown("## 📊 Dashboard")
     st.bar_chart(df_all.groupby("form")["quantity"].sum())

@@ -3,6 +3,7 @@ import pandas as pd
 import psycopg2
 from datetime import datetime
 from io import BytesIO
+import streamlit.components.v1 as components
 
 # ======================
 # CONFIG
@@ -10,11 +11,34 @@ from io import BytesIO
 st.set_page_config(page_title="Stock System", layout="centered")
 
 # ======================
-# CONNECT DB
+# MOBILE UI CSS
 # ======================
-conn = psycopg2.connect(
-    "postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
-)
+st.markdown("""
+<style>
+.block-container { padding: 1rem; }
+.stButton>button {
+    width: 100%;
+    height: 55px;
+    font-size: 18px;
+    border-radius: 12px;
+}
+input, .stTextInput input {
+    font-size: 18px !important;
+    height: 45px !important;
+}
+.card {
+    padding: 15px;
+    border-radius: 15px;
+    background-color: #f2f2f2;
+    margin-bottom: 10px;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ======================
+# DB CONNECT
+# ======================
+conn = psycopg2.connect("YOUR_DB_URL")
 conn.autocommit = True
 c = conn.cursor()
 
@@ -28,6 +52,7 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT
 );
 """)
+
 c.execute("""
 CREATE TABLE IF NOT EXISTS employees (
     emp_id TEXT PRIMARY KEY,
@@ -35,6 +60,7 @@ CREATE TABLE IF NOT EXISTS employees (
     phone TEXT
 );
 """)
+
 c.execute("""
 CREATE TABLE IF NOT EXISTS item_master (
     itemkey TEXT PRIMARY KEY,
@@ -42,6 +68,7 @@ CREATE TABLE IF NOT EXISTS item_master (
     unit TEXT
 );
 """)
+
 c.execute("""
 CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
@@ -59,312 +86,243 @@ CREATE TABLE IF NOT EXISTS transactions (
     supervisor_phone TEXT
 );
 """)
+
 c.execute("""
-INSERT INTO users (username,password,role) VALUES
-('admin','123','admin'),
-('user1','user1','user'),
-('user2','user2','user'),
-('user3','user3','user')
-ON CONFLICT (username) DO NOTHING;
+CREATE TABLE IF NOT EXISTS locked_dates (
+    lock_date DATE PRIMARY KEY,
+    locked_by TEXT
+);
+""")
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS audit_log (
+    id SERIAL PRIMARY KEY,
+    action TEXT,
+    trans_id INT,
+    old_data TEXT,
+    new_data TEXT,
+    updated_by TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 """)
 
 # ======================
-# SESSION INIT
+# DEFAULT USER
+# ======================
+c.execute("""
+INSERT INTO users VALUES
+('admin','123','admin')
+ON CONFLICT DO NOTHING;
+""")
+
+# ======================
+# SESSION
 # ======================
 if "user" not in st.session_state:
     st.session_state.user = None
-    st.session_state.role = None
 
 # ======================
 # HELPER
 # ======================
 def split_emp(text):
-    """Chia chuỗi kiểu 'ID - Name (Phone)'"""
     emp_id = text.split(" - ")[0]
     name = text.split(" - ")[1].split(" (")[0]
     phone = text.split("(")[1].replace(")", "")
     return emp_id, name, phone
 
 # ======================
+# BARCODE SCANNER
+# ======================
+def barcode_scanner():
+    html = """
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <div id="reader"></div>
+    <script>
+    function onScanSuccess(decodedText) {
+        var audio = new Audio("https://www.soundjay.com/buttons/beep-07.mp3");
+        audio.play();
+        window.parent.postMessage({type:"streamlit:setComponentValue",value:decodedText},"*");
+    }
+    let scanner = new Html5QrcodeScanner("reader",{fps:10,qrbox:250});
+    scanner.render(onScanSuccess);
+    </script>
+    """
+    return components.html(html, height=300)
+
+# ======================
 # LOGIN
 # ======================
-if not st.session_state.get("user"):
+if not st.session_state.user:
+
     st.title("🔐 Login")
-    username = st.text_input("Username", key="login_user")
-    password = st.text_input("Password", type="password", key="login_pass")
 
-    # load employee
+    user = st.text_input("User")
+    pw = st.text_input("Password", type="password")
+
     df_emp = pd.read_sql("SELECT * FROM employees", conn)
-    emp_options = df_emp.apply(
-        lambda x: f"{x['emp_id']} - {x['emp_name']} ({x['phone']})", axis=1
-    ).tolist()
+    options = df_emp.apply(lambda x: f"{x.emp_id} - {x.emp_name} ({x.phone})", axis=1).tolist()
 
-    st.markdown("### 👷 Thông tin ca kiểm kê")
+    mode = st.radio("Counter nhập:", ["Dropdown","Gõ tay"])
+    counter = st.selectbox("Counter", options) if mode=="Dropdown" and options else st.text_input("Counter")
 
-    # --------- Counter ---------
-    st.markdown("#### Counter")
-    counter_choice = st.radio("Chọn kiểu nhập Counter:", ["Dropdown", "Gõ tay"], key="counter_type")
-    if counter_choice == "Dropdown" and emp_options:
-        counter_select = st.selectbox("Counter", emp_options, key="counter_select")
-    else:
-        counter_select = st.text_input("Counter (ID - Name (Phone))", key="counter_text")
+    mode2 = st.radio("Supervisor nhập:", ["Dropdown","Gõ tay"])
+    sup = st.selectbox("Supervisor", options) if mode2=="Dropdown" and options else st.text_input("Supervisor")
 
-    # --------- Supervisor ---------
-    st.markdown("#### Supervisor")
-    supervisor_choice = st.radio("Chọn kiểu nhập Supervisor:", ["Dropdown", "Gõ tay"], key="supervisor_type")
-    if supervisor_choice == "Dropdown" and emp_options:
-        supervisor_select = st.selectbox("Supervisor", emp_options, key="supervisor_select")
-    else:
-        supervisor_select = st.text_input("Supervisor (ID - Name (Phone))", key="supervisor_text")
+    if st.button("Login"):
 
-    if st.button("Login", key="btn_login"):
-        df = pd.read_sql(
-            "SELECT * FROM users WHERE username=%s AND password=%s",
-            conn,
-            params=(username, password)
-        )
+        df = pd.read_sql("SELECT * FROM users WHERE username=%s AND password=%s", conn, params=(user,pw))
 
-        if not df.empty and counter_select and supervisor_select:
-            st.session_state.user = username
-            st.session_state.role = df.iloc[0]["role"]
+        if not df.empty:
 
-            # Hàm thêm hoặc cập nhật nhân viên
-            def add_or_update_emp(emp_text):
-                if " - " in emp_text and "(" in emp_text:
-                    emp_id, name, phone = split_emp(emp_text)
-                    df_check = pd.read_sql("SELECT * FROM employees WHERE emp_id=%s", conn, params=(emp_id,))
-                    if df_check.empty:
-                        # Thêm mới
-                        c.execute("""
-                        INSERT INTO employees (emp_id, emp_name, phone)
-                        VALUES (%s,%s,%s)
-                        """, (emp_id, name, phone))
-                    else:
-                        # Cập nhật nếu thông tin thay đổi
-                        if df_check.iloc[0]["emp_name"] != name or df_check.iloc[0]["phone"] != phone:
-                            c.execute("""
-                            UPDATE employees SET emp_name=%s, phone=%s
-                            WHERE emp_id=%s
-                            """, (name, phone, emp_id))
-                    return emp_id, name, phone
-                else:
-                    st.error("Nhập nhân sự phải theo format: ID - Name (Phone)")
-                    st.stop()
+            def upsert(emp):
+                eid,name,phone = split_emp(emp)
+                c.execute("""
+                INSERT INTO employees VALUES (%s,%s,%s)
+                ON CONFLICT (emp_id) DO UPDATE
+                SET emp_name=%s, phone=%s
+                """,(eid,name,phone,name,phone))
+                return eid,name,phone
 
-            c_id, c_name, c_phone = add_or_update_emp(counter_select)
-            s_id, s_name, s_phone = add_or_update_emp(supervisor_select)
+            c_id,c_name,c_phone = upsert(counter)
+            s_id,s_name,s_phone = upsert(sup)
 
-            st.session_state.counter_id = c_id
+            st.session_state.user = user
+            st.session_state.role = df.iloc[0].role
             st.session_state.counter = c_name
+            st.session_state.counter_id = c_id
             st.session_state.counter_phone = c_phone
-            st.session_state.supervisor_id = s_id
-            st.session_state.supervisor = s_name
-            st.session_state.supervisor_phone = s_phone
+            st.session_state.sup = s_name
+            st.session_state.sup_id = s_id
+            st.session_state.sup_phone = s_phone
 
-            st.success("Login success")
             st.rerun()
-        else:
-            st.error("Sai tài khoản hoặc thiếu thông tin")
 
     st.stop()
 
 # ======================
 # HEADER
 # ======================
-st.title(f"📦 Stock System - {st.session_state.get('user','')}")
 st.markdown(f"""
-👷 Counter: **{st.session_state.get('counter','')}**  
-🧑‍💼 Supervisor: **{st.session_state.get('supervisor','')}**
-""")
-
-if st.button("Logout", key="btn_logout"):
-    st.session_state.user = None
-    st.rerun()
-
-# ======================
-# ADMIN - USER MGMT & UPLOAD MASTER/EMP
-# ======================
-if st.session_state.get('role') == "admin":
-    st.markdown("## 👤 User Management")
-    df_users = pd.read_sql("SELECT * FROM users", conn)
-    st.dataframe(df_users)
-
-    new_user = st.text_input("Username", key="admin_new_user")
-    new_pass = st.text_input("Password", key="admin_new_pass")
-    new_role = st.selectbox("Role", ["admin", "user"], key="admin_new_role")
-    if st.button("Save User", key="btn_save_user"):
-        c.execute("""
-        INSERT INTO users (username,password,role)
-        VALUES (%s,%s,%s)
-        ON CONFLICT (username) DO UPDATE
-        SET password=EXCLUDED.password,
-            role=EXCLUDED.role;
-        """, (new_user, new_pass, new_role))
-        st.success("Saved")
-
-    # Upload Employee (admin only)
-    st.markdown("## 👷 Upload Employee")
-    file_emp = st.file_uploader("Employee Excel", type=["xlsx"], key="upl_emp")
-    if file_emp:
-        df_emp = pd.read_excel(file_emp)
-        if st.button("Save Employees", key="btn_save_emp"):
-            for _, row in df_emp.iterrows():
-                c.execute("""
-                INSERT INTO employees (emp_id, emp_name, phone)
-                VALUES (%s,%s,%s)
-                ON CONFLICT (emp_id) DO UPDATE
-                SET emp_name=EXCLUDED.emp_name,
-                    phone=EXCLUDED.phone;
-                """, (
-                    row["EmpID"],
-                    row["Name"],
-                    row["Phone"]
-                ))
-            st.success("Done")
-
-    # Upload Item Master (admin only)
-    st.markdown("## 📦 Upload Item Master")
-    file = st.file_uploader("Item Master Excel", type=["xlsx"], key="upl_item")
-    if file:
-        df_master = pd.read_excel(file)
-        if st.button("Save Item Master", key="btn_save_item"):
-            for _, row in df_master.iterrows():
-                c.execute("""
-                INSERT INTO item_master (itemkey, description, unit)
-                VALUES (%s,%s,%s)
-                ON CONFLICT (itemkey) DO UPDATE
-                SET description=EXCLUDED.description,
-                    unit=EXCLUDED.unit;
-                """, (
-                    row["Itemkey"],
-                    row["Description"],
-                    row["Unit"]
-                ))
-            st.success("Done")
+<div class="card">
+📦 {st.session_state.user}<br>
+👷 {st.session_state.counter}<br>
+🧑‍💼 {st.session_state.sup}
+</div>
+""", unsafe_allow_html=True)
 
 # ======================
-# LOAD ITEMS
+# FORM + SCAN
 # ======================
-df_items = pd.read_sql("SELECT * FROM item_master", conn)
-def search_items(keyword):
-    if not keyword:
-        return df_items.head(50)
-    return df_items[df_items["itemkey"].str.contains(keyword, case=False)]
-
-# ======================
-# FORMS
-# ======================
-forms = ["Component", "Scrap", "RM", "FG", "Regran"]
+forms = ["RM","FG","Scrap"]
 tabs = st.tabs(forms)
 
-for i, tab in enumerate(tabs):
-    with tab:
-        st.subheader(forms[i])
-        keyword = st.text_input("🔍 Search Item", key=f"s_{i}")
-        filtered = search_items(keyword)
-        item = st.selectbox("Item", filtered["itemkey"].tolist(), key=f"i_{i}")
-        barcode = st.text_input("📷 Barcode", key=f"b_{i}")
-        if barcode:
-            item = barcode
-        qty = st.number_input("Quantity", min_value=0.0, key=f"q_{i}")
-        loc = st.text_input("Location", key=f"l_{i}")
+for i,f in enumerate(forms):
+    with tabs[i]:
 
-        if st.button("Save", key=f"save_{i}"):
+        st.subheader(f)
+
+        scan = barcode_scanner()
+        item = st.text_input("Item / Barcode", key=f"i{i}")
+
+        qty = st.number_input("Qty", 0.0, key=f"q{i}")
+        loc = st.text_input("Location", key=f"l{i}")
+
+        if scan:
+            item = scan
+            st.success(f"Scanned {item}")
+
+        if st.button("💾 SAVE", key=f"s{i}"):
+
+            # check lock
+            lock = pd.read_sql("SELECT * FROM locked_dates WHERE lock_date=%s",
+                               conn, params=(datetime.today().date(),))
+            if not lock.empty:
+                st.error("Date locked")
+                st.stop()
+
             c.execute("""
-            INSERT INTO transactions 
+            INSERT INTO transactions
             (form,itemkey,quantity,location,created_by,
-             counter_id,counter_name,counter_phone,
-             supervisor_id,supervisor_name,supervisor_phone)
+            counter_id,counter_name,counter_phone,
+            supervisor_id,supervisor_name,supervisor_phone)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (
-                forms[i], item, qty, loc, st.session_state.get('user',''),
-                st.session_state.get('counter_id',''),
-                st.session_state.get('counter',''),
-                st.session_state.get('counter_phone',''),
-                st.session_state.get('supervisor_id',''),
-                st.session_state.get('supervisor',''),
-                st.session_state.get('supervisor_phone','')
-            ))
+            """,(f,item,qty,loc,st.session_state.user,
+                 st.session_state.counter_id,
+                 st.session_state.counter,
+                 st.session_state.counter_phone,
+                 st.session_state.sup_id,
+                 st.session_state.sup,
+                 st.session_state.sup_phone))
+
             st.success("Saved")
+            st.rerun()
 
-        # Hiển thị table với counter & supervisor đầy đủ
-        df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
-        st.dataframe(df)
-
-        # Export CSV/Excel
-        if not df.empty:
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("Download CSV", csv, file_name=f"{forms[i]}_transactions.csv", mime="text/csv")
-
-            output = BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Sheet1')
-            st.download_button(
-                "Download Excel",
-                output.getvalue(),
-                file_name=f"{forms[i]}_transactions.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
 # ======================
-# SEARCH / FILTER
+# FILTER
 # ======================
-st.markdown("## 🔎 Search Transactions")
+st.markdown("## 🔎 Search")
 
-df_all = pd.read_sql("SELECT * FROM transactions", conn)
+df = pd.read_sql("SELECT * FROM transactions", conn)
 
-if not df_all.empty:
-    # Convert datetime
-    df_all["created_at"] = pd.to_datetime(df_all["created_at"])
+if not df.empty:
+    df["created_at"] = pd.to_datetime(df["created_at"])
 
-    col1, col2, col3 = st.columns(3)
+    d1 = st.date_input("From", df.created_at.min().date())
+    d2 = st.date_input("To", df.created_at.max().date())
 
-    with col1:
-        date_from = st.date_input("From Date", value=df_all["created_at"].min().date())
-    with col2:
-        date_to = st.date_input("To Date", value=df_all["created_at"].max().date())
-    with col3:
-        users = ["All"] + df_all["created_by"].dropna().unique().tolist()
-        user_filter = st.selectbox("User", users)
+    user = st.selectbox("User", ["All"]+df.created_by.unique().tolist())
 
-    # Apply filter
-    df_filter = df_all[
-        (df_all["created_at"].dt.date >= date_from) &
-        (df_all["created_at"].dt.date <= date_to)
-    ]
+    df = df[(df.created_at.dt.date>=d1)&(df.created_at.dt.date<=d2)]
+    if user!="All":
+        df = df[df.created_by==user]
 
-    if user_filter != "All":
-        df_filter = df_filter[df_filter["created_by"] == user_filter]
+    st.dataframe(df)
 
-    st.dataframe(df_filter)
+    # export
+    st.download_button("CSV", df.to_csv(index=False), "data.csv")
 
-    # Export sau khi filter
-    if not df_filter.empty:
-        # CSV
-        csv = df_filter.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Download CSV (Filtered)",
-            csv,
-            file_name="filtered_transactions.csv",
-            mime="text/csv"
-        )
+    bio = BytesIO()
+    with pd.ExcelWriter(bio, engine="openpyxl") as w:
+        df.to_excel(w,index=False)
+    st.download_button("Excel", bio.getvalue(), "data.xlsx")
 
-        # Excel
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_filter.to_excel(writer, index=False, sheet_name='Filtered')
-        st.download_button(
-            "Download Excel (Filtered)",
-            output.getvalue(),
-            file_name="filtered_transactions.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+# ======================
+# ADMIN
+# ======================
+if st.session_state.role=="admin":
 
-else:
-    st.info("No data available")
+    st.markdown("## 🔒 Lock Date")
+    d = st.date_input("Lock date")
+    if st.button("Lock"):
+        c.execute("INSERT INTO locked_dates VALUES (%s,%s) ON CONFLICT DO NOTHING",
+                  (d,st.session_state.user))
+
+    st.markdown("## ✏️ Edit")
+
+    tid = st.number_input("ID",1)
+    newq = st.number_input("New Qty",0.0)
+
+    if st.button("Update"):
+        old = pd.read_sql("SELECT * FROM transactions WHERE id=%s", conn, params=(tid,))
+        c.execute("UPDATE transactions SET quantity=%s WHERE id=%s",(newq,tid))
+
+        c.execute("""
+        INSERT INTO audit_log (action,trans_id,old_data,new_data,updated_by)
+        VALUES (%s,%s,%s,%s,%s)
+        """,("UPDATE",tid,old.to_json(),str(newq),st.session_state.user))
+
+        st.success("Updated")
+
 # ======================
 # DASHBOARD
 # ======================
-st.markdown("## 📊 Dashboard")
-df_all = pd.read_sql("SELECT * FROM transactions", conn)
-if not df_all.empty:
-    st.bar_chart(df_all.groupby("form")["quantity"].sum())
+st.markdown("## 📊 Trend")
+
+df = pd.read_sql("""
+SELECT DATE(created_at) d, SUM(quantity) q
+FROM transactions GROUP BY d ORDER BY d
+""", conn)
+
+if not df.empty:
+    df = df.set_index("d")
+    st.line_chart(df)

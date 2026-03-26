@@ -13,7 +13,7 @@ st.set_page_config(page_title="Stock System", layout="centered")
 # CONNECT DB
 # ======================
 conn = psycopg2.connect(
-    "postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    "postgresql://neondb_owner:YOUR_NEW_PASSWORD@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
 )
 conn.autocommit = True
 c = conn.cursor()
@@ -87,18 +87,24 @@ ON CONFLICT (username) DO NOTHING;
 """)
 
 # ======================
-# LOGIN
+# SESSION INIT
 # ======================
 if "user" not in st.session_state:
     st.session_state.user = None
     st.session_state.role = None
 
+# ======================
+# HELPER
+# ======================
 def split_emp(text):
     emp_id = text.split(" - ")[0]
     name = text.split(" - ")[1].split(" (")[0]
     phone = text.split("(")[1].replace(")", "")
     return emp_id, name, phone
 
+# ======================
+# LOGIN
+# ======================
 if not st.session_state.user:
     st.title("🔐 Login")
 
@@ -111,8 +117,7 @@ if not st.session_state.user:
         lambda x: f"{x['emp_id']} - {x['emp_name']} ({x['phone']})", axis=1
     ).tolist()
 
-    st.markdown("### 👷 Thông tin kiểm kê")
-
+    st.markdown("### 👷 Thông tin ca kiểm kê")
     counter_select = st.selectbox("Counter", emp_options)
     supervisor_select = st.selectbox("Supervisor", emp_options)
 
@@ -124,7 +129,6 @@ if not st.session_state.user:
         )
 
         if not df.empty and counter_select and supervisor_select:
-
             st.session_state.user = username
             st.session_state.role = df.iloc[0]["role"]
 
@@ -142,7 +146,7 @@ if not st.session_state.user:
             st.success("Login success")
             st.rerun()
         else:
-            st.error("Thiếu thông tin")
+            st.error("Thiếu thông tin hoặc sai tài khoản")
 
     st.stop()
 
@@ -150,7 +154,6 @@ if not st.session_state.user:
 # HEADER
 # ======================
 st.title(f"📦 Stock System - {st.session_state.user}")
-
 st.markdown(f"""
 👷 Counter: **{st.session_state.counter}**  
 🧑‍💼 Supervisor: **{st.session_state.supervisor}**
@@ -165,14 +168,12 @@ if st.button("Logout"):
 # ======================
 if st.session_state.role == "admin":
     st.markdown("## 👤 User Management")
-
     df_users = pd.read_sql("SELECT * FROM users", conn)
     st.dataframe(df_users)
 
     new_user = st.text_input("Username")
     new_pass = st.text_input("Password")
     new_role = st.selectbox("Role", ["admin", "user"])
-
     if st.button("Save User"):
         c.execute("""
         INSERT INTO users (username,password,role)
@@ -187,12 +188,9 @@ if st.session_state.role == "admin":
 # UPLOAD EMPLOYEE
 # ======================
 st.markdown("## 👷 Upload Employee")
-
-file_emp = st.file_uploader("Employee Excel", type=["xlsx"])
-
+file_emp = st.file_uploader("Employee Excel", type=["xlsx"], key="emp")
 if file_emp:
     df_emp = pd.read_excel(file_emp)
-
     if st.button("Save Employees"):
         for _, row in df_emp.iterrows():
             c.execute("""
@@ -212,12 +210,9 @@ if file_emp:
 # UPLOAD ITEM MASTER
 # ======================
 st.markdown("## 📦 Upload Item Master")
-
-file = st.file_uploader("Item Master Excel", type=["xlsx"])
-
+file = st.file_uploader("Item Master Excel", type=["xlsx"], key="item")
 if file:
     df_master = pd.read_excel(file)
-
     if st.button("Save Item Master"):
         for _, row in df_master.iterrows():
             c.execute("""
@@ -237,7 +232,6 @@ if file:
 # LOAD ITEMS
 # ======================
 df_items = pd.read_sql("SELECT * FROM item_master", conn)
-
 def search_items(keyword):
     if not keyword:
         return df_items.head(50)
@@ -257,7 +251,6 @@ for i, tab in enumerate(tabs):
         filtered = search_items(keyword)
 
         item = st.selectbox("Item", filtered["itemkey"].tolist(), key=f"i_{i}")
-
         barcode = st.text_input("📷 Barcode", key=f"b_{i}")
         if barcode:
             item = barcode
@@ -285,7 +278,6 @@ for i, tab in enumerate(tabs):
 
         df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
         st.dataframe(df)
-
         if not df.empty:
             csv = df.to_csv(index=False).encode()
             st.download_button("CSV", csv)
@@ -294,7 +286,6 @@ for i, tab in enumerate(tabs):
 # DASHBOARD
 # ======================
 st.markdown("## 📊 Dashboard")
-
 df_all = pd.read_sql("SELECT * FROM transactions", conn)
 if not df_all.empty:
     st.bar_chart(df_all.groupby("form")["quantity"].sum())

@@ -322,23 +322,23 @@ for i, tab in enumerate(tabs):
         if locked and st.session_state.role != "admin":
             st.warning("🔒 System locked - cannot input")
         else:
-        if st.button("Save", key=f"save_{i}"):
-            c.execute("""
-            INSERT INTO transactions 
-            (form,itemkey,quantity,location,created_by,
-             counter_id,counter_name,counter_phone,
-             supervisor_id,supervisor_name,supervisor_phone)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (
-                forms[i], item, qty, loc, st.session_state.get('user',''),
-                st.session_state.get('counter_id',''),
-                st.session_state.get('counter',''),
-                st.session_state.get('counter_phone',''),
-                st.session_state.get('supervisor_id',''),
-                st.session_state.get('supervisor',''),
-                st.session_state.get('supervisor_phone','')
-            ))
-            st.success("Saved")
+            if st.button("Save", key=f"save_btn_{forms[i]}_{i}"):
+                c.execute("""
+                INSERT INTO transactions 
+                (form,itemkey,quantity,location,created_by,
+                 counter_id,counter_name,counter_phone,
+                 supervisor_id,supervisor_name,supervisor_phone)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    forms[i], item, qty, loc, st.session_state.get('user',''),
+                    st.session_state.get('counter_id',''),
+                    st.session_state.get('counter',''),
+                    st.session_state.get('counter_phone',''),
+                    st.session_state.get('supervisor_id',''),
+                    st.session_state.get('supervisor',''),
+                    st.session_state.get('supervisor_phone','')
+                ))
+                st.success("Saved")
 
         # Hiển thị table với counter & supervisor đầy đủ
         df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)

@@ -317,7 +317,11 @@ for i, tab in enumerate(tabs):
             item = barcode
         qty = st.number_input("Quantity", min_value=0.0, key=f"q_{i}")
         loc = st.text_input("Location", key=f"l_{i}")
-
+        
+ # 🚫 BLOCK IF LOCKED
+        if locked and st.session_state.role != "admin":
+            st.warning("🔒 System locked - cannot input")
+        else:
         if st.button("Save", key=f"save_{i}"):
             c.execute("""
             INSERT INTO transactions 
@@ -354,30 +358,7 @@ for i, tab in enumerate(tabs):
                 file_name=f"{forms[i]}_transactions.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-         # 🚫 BLOCK IF LOCKED
-        if locked and st.session_state.role != "admin":
-            st.warning("🔒 System locked - cannot input")
-        else:
-            if st.button("Save", key=f"save_btn_{forms[i]}_{i}"):
-                c.execute("""
-                INSERT INTO transactions 
-                (form,itemkey,quantity,location,created_by,
-                 counter_id,counter_name,counter_phone,
-                 supervisor_id,supervisor_name,supervisor_phone)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (
-                    forms[i], item, qty, loc, st.session_state.user,
-                    st.session_state.counter_id,
-                    st.session_state.counter,
-                    st.session_state.counter_phone,
-                    st.session_state.supervisor_id,
-                    st.session_state.supervisor,
-                    st.session_state.supervisor_phone
-                ))
-                st.success("Saved")
-
-        df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
-        st.dataframe(df)
+          
 # ======================
 # SEARCH / FILTER
 # ======================

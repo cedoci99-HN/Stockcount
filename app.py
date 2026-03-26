@@ -35,10 +35,11 @@ input { font-size:18px !important; height:45px !important; }
 # ======================
 # DB
 # ======================
-conn = psycopg2.connect(st.secrets["postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"])
+conn = psycopg2.connect(
+    "postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+)
 conn.autocommit = True
 c = conn.cursor()
-
 # ======================
 # TABLES
 # ======================

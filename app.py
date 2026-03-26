@@ -1,21 +1,26 @@
-# ERP AUDIT LEVEL 2 (FULL - KEEP ALL FEATURES + COUNTER/SUPERVISOR + LOCK + ADMIN EDIT + AUDIT LOG)
-
 import streamlit as st
 import pandas as pd
 import psycopg2
 from datetime import datetime
 from io import BytesIO
 
-st.set_page_config(page_title="ERP Audit", layout="centered")
+# ======================
+# CONFIG
+# ======================
+st.set_page_config(page_title="Stock System", layout="centered")
 
-# ================= DB =================
+# ======================
+# CONNECT DB
+# ======================
 conn = psycopg2.connect(
-    "postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    "postgresql://neondb_owner:mypass@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 )
 conn.autocommit = True
 c = conn.cursor()
 
-# ================= TABLES =================
+# ======================
+# CREATE TABLES
+# ======================
 c.execute("""
 CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
@@ -58,18 +63,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 """)
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS audit_log (
-    id SERIAL PRIMARY KEY,
-    trans_id INT,
-    action TEXT,
-    old_data TEXT,
-    new_data TEXT,
-    changed_by TEXT,
-    changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-""")
-
+# ✅ NEW: LOCK TABLE
 c.execute("""
 CREATE TABLE IF NOT EXISTS app_control (
     id INT PRIMARY KEY,
@@ -83,30 +77,38 @@ VALUES (1, FALSE)
 ON CONFLICT (id) DO NOTHING;
 """)
 
-# ================= LOCK =================
+# ======================
+# LOCK FUNCTIONS
+# ======================
 def is_locked():
     return pd.read_sql("SELECT is_locked FROM app_control WHERE id=1", conn).iloc[0][0]
 
 def set_lock(val):
     c.execute("UPDATE app_control SET is_locked=%s WHERE id=1", (val,))
 
-# ================= SESSION =================
+# ======================
+# SESSION INIT
+# ======================
 if "user" not in st.session_state:
     st.session_state.user = None
     st.session_state.role = None
 
-# ================= HELPER =================
+# ======================
+# HELPER
+# ======================
 def split_emp(text):
     emp_id = text.split(" - ")[0]
     name = text.split(" - ")[1].split(" (")[0]
     phone = text.split("(")[1].replace(")", "")
     return emp_id, name, phone
 
-# ================= LOGIN =================
+# ======================
+# LOGIN
+# ======================
 if not st.session_state.get("user"):
     st.title("🔐 Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    username = st.text_input("Username", key="login_user")
+    password = st.text_input("Password", type="password", key="login_pass")
 
     df_emp = pd.read_sql("SELECT * FROM employees", conn)
     emp_options = df_emp.apply(
@@ -115,8 +117,8 @@ if not st.session_state.get("user"):
 
     st.markdown("### 👷 Thông tin ca kiểm kê")
 
-    counter_select = st.selectbox("Counter", emp_options) if emp_options else st.text_input("Counter (ID - Name (Phone))")
-    supervisor_select = st.selectbox("Supervisor", emp_options) if emp_options else st.text_input("Supervisor (ID - Name (Phone))")
+    counter_select = st.selectbox("Counter", emp_options) if emp_options else st.text_input("Counter")
+    supervisor_select = st.selectbox("Supervisor", emp_options) if emp_options else st.text_input("Supervisor")
 
     if st.button("Login"):
         df = pd.read_sql(
@@ -153,45 +155,91 @@ if not st.session_state.get("user"):
             st.success("Login success")
             st.rerun()
         else:
-            st.error("Thiếu thông tin")
+            st.error("Sai tài khoản hoặc thiếu thông tin")
 
     st.stop()
 
-# ================= HEADER =================
-st.title(f"📦 ERP Audit - {st.session_state.user}")
-st.markdown(f"Counter: {st.session_state.get('counter','')} | Supervisor: {st.session_state.get('supervisor','')}")
+# ======================
+# HEADER
+# ======================
+st.title(f"📦 Stock System - {st.session_state.user}")
 
-# ================= LOCK =================
+st.markdown(f"""
+👷 Counter: **{st.session_state.get('counter','')}**  
+🧑‍💼 Supervisor: **{st.session_state.get('supervisor','')}**
+""")
+
+if st.button("Logout"):
+    st.session_state.user = None
+    st.rerun()
+
+# ======================
+# LOCK STATUS DISPLAY
+# ======================
 locked = is_locked()
 
+if locked:
+    st.error("🔒 SYSTEM STATUS: LOCKED")
+else:
+    st.success("🔓 SYSTEM STATUS: UNLOCKED")
+
+# ======================
+# ADMIN LOCK CONTROL
+# ======================
 if st.session_state.role == "admin":
+    st.markdown("## 🔒 System Control")
+
     col1, col2 = st.columns(2)
-    if col1.button("🔒 Lock"):
+
+    if col1.button("🔒 Lock System"):
         set_lock(True)
         st.rerun()
-    if col2.button("🔓 Unlock"):
+
+    if col2.button("🔓 Unlock System"):
         set_lock(False)
         st.rerun()
 
-if locked and st.session_state.role != "admin":
-    st.warning("🔒 System locked")
+# ======================
+# LOAD ITEMS
+# ======================
+df_items = pd.read_sql("SELECT * FROM item_master", conn)
 
-# ================= FORMS =================
+def search_items(keyword):
+    if not keyword:
+        return df_items.head(50)
+    return df_items[df_items["itemkey"].str.contains(keyword, case=False)]
+
+# ======================
+# FORMS
+# ======================
 forms = ["Component", "Scrap", "RM", "FG", "Regran"]
 tabs = st.tabs(forms)
 
 for i, tab in enumerate(tabs):
     with tab:
-        item = st.text_input("Item", key=f"i_{i}")
-        qty = st.number_input("Qty", key=f"q_{i}")
+        st.subheader(forms[i])
+
+        keyword = st.text_input("🔍 Search Item", key=f"s_{i}")
+        filtered = search_items(keyword)
+
+        item = st.selectbox("Item", filtered["itemkey"].tolist(), key=f"i_{i}")
+        barcode = st.text_input("📷 Barcode", key=f"b_{i}")
+        if barcode:
+            item = barcode
+
+        qty = st.number_input("Quantity", min_value=0.0, key=f"q_{i}")
         loc = st.text_input("Location", key=f"l_{i}")
 
-        if not (locked and st.session_state.role != "admin"):
-            if st.button("Save", key=f"s_{i}"):
+        # 🚫 BLOCK IF LOCKED
+        if locked and st.session_state.role != "admin":
+            st.warning("🔒 System locked - cannot input")
+        else:
+            if st.button("Save", key=f"save_{i}"):
                 c.execute("""
-                INSERT INTO transactions (form,itemkey,quantity,location,created_by,
-                counter_id,counter_name,counter_phone,
-                supervisor_id,supervisor_name,supervisor_phone)
+                INSERT INTO transactions 
+                (form,itemkey,quantity,location,created_by,
+                 counter_id,counter_name,counter_phone,
+                 supervisor_id,supervisor_name,supervisor_phone)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 """, (
                     forms[i], item, qty, loc, st.session_state.user,
@@ -206,36 +254,3 @@ for i, tab in enumerate(tabs):
 
         df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
         st.dataframe(df)
-
-# ================= ADMIN EDIT =================
-if st.session_state.role == "admin":
-    st.markdown("## ✏️ Edit Transaction")
-    df_edit = pd.read_sql("SELECT * FROM transactions", conn)
-
-    if not df_edit.empty:
-        selected_id = st.selectbox("ID", df_edit["id"])
-        row = df_edit[df_edit["id"] == selected_id].iloc[0]
-
-        new_qty = st.number_input("Qty", value=float(row["quantity"]))
-        new_loc = st.text_input("Location", value=row["location"])
-
-        if st.button("Update"):
-            old_data = row.to_json()
-            c.execute("UPDATE transactions SET quantity=%s, location=%s WHERE id=%s",
-                      (new_qty, new_loc, selected_id))
-
-            c.execute("INSERT INTO audit_log (trans_id,action,old_data,new_data,changed_by)VALUES (%s,%s,%s,%s,%s)",
-                      (selected_id, "UPDATE", old_data, str({"qty": new_qty}), st.session_state.user))
-
-            st.success("Updated + Logged")
-            st.rerun()
-
-# ================= AUDIT =================
-if st.session_state.role == "admin":
-    st.markdown("## 📜 Audit Log")
-    st.dataframe(pd.read_sql("SELECT * FROM audit_log ORDER BY changed_at DESC", conn))
-
-# ================= DASHBOARD =================
-df_all = pd.read_sql("SELECT * FROM transactions", conn)
-if not df_all.empty:
-    st.bar_chart(df_all.groupby("form")["quantity"].sum())

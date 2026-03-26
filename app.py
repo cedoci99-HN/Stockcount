@@ -224,8 +224,7 @@ if st.session_state.role == "admin":
             c.execute("UPDATE transactions SET quantity=%s, location=%s WHERE id=%s",
                       (new_qty, new_loc, selected_id))
 
-            c.execute("INSERT INTO audit_log (trans_id,action,old_data,new_data,changed_by)
-                      VALUES (%s,%s,%s,%s,%s)",
+            c.execute("INSERT INTO audit_log (trans_id,action,old_data,new_data,changed_by)VALUES (%s,%s,%s,%s,%s)",
                       (selected_id, "UPDATE", old_data, str({"qty": new_qty}), st.session_state.user))
 
             st.success("Updated + Logged")

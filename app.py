@@ -10,7 +10,7 @@ st.set_page_config(page_title="ERP Audit", layout="centered")
 
 # ================= DB =================
 conn = psycopg2.connect(
-    "postgresql://neondb_owner:mypass@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    "postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 )
 conn.autocommit = True
 c = conn.cursor()

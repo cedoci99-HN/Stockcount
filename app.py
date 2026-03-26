@@ -68,6 +68,29 @@ INSERT INTO users (username,password,role) VALUES
 ON CONFLICT (username) DO NOTHING;
 """)
 
+# ✅ NEW: LOCK TABLE
+c.execute("""
+CREATE TABLE IF NOT EXISTS app_control (
+    id INT PRIMARY KEY,
+    is_locked BOOLEAN
+);
+""")
+
+c.execute("""
+INSERT INTO app_control (id, is_locked)
+VALUES (1, FALSE)
+ON CONFLICT (id) DO NOTHING;
+""")
+
+# ======================
+# LOCK FUNCTIONS
+# ======================
+def is_locked():
+    return pd.read_sql("SELECT is_locked FROM app_control WHERE id=1", conn).iloc[0][0]
+
+def set_lock(val):
+    c.execute("UPDATE app_control SET is_locked=%s WHERE id=1", (val,))
+    
 # ======================
 # SESSION INIT
 # ======================
@@ -180,6 +203,32 @@ st.markdown(f"""
 if st.button("Logout", key="btn_logout"):
     st.session_state.user = None
     st.rerun()
+
+# ======================
+# LOCK STATUS DISPLAY
+# ======================
+locked = is_locked()
+
+if locked:
+    st.error("🔒 SYSTEM STATUS: LOCKED")
+else:
+    st.success("🔓 SYSTEM STATUS: UNLOCKED")
+
+# ======================
+# ADMIN LOCK CONTROL
+# ======================
+if st.session_state.role == "admin":
+    st.markdown("## 🔒 System Control")
+
+    col1, col2 = st.columns(2)
+
+    if col1.button("🔒 Lock System"):
+        set_lock(True)
+        st.rerun()
+
+    if col2.button("🔓 Unlock System"):
+        set_lock(False)
+        st.rerun()
 
 # ======================
 # ADMIN - USER MGMT & UPLOAD MASTER/EMP
@@ -305,6 +354,30 @@ for i, tab in enumerate(tabs):
                 file_name=f"{forms[i]}_transactions.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+         # 🚫 BLOCK IF LOCKED
+        if locked and st.session_state.role != "admin":
+            st.warning("🔒 System locked - cannot input")
+        else:
+            if st.button("Save", key=f"save_{i}"):
+                c.execute("""
+                INSERT INTO transactions 
+                (form,itemkey,quantity,location,created_by,
+                 counter_id,counter_name,counter_phone,
+                 supervisor_id,supervisor_name,supervisor_phone)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    forms[i], item, qty, loc, st.session_state.user,
+                    st.session_state.counter_id,
+                    st.session_state.counter,
+                    st.session_state.counter_phone,
+                    st.session_state.supervisor_id,
+                    st.session_state.supervisor,
+                    st.session_state.supervisor_phone
+                ))
+                st.success("Saved")
+
+        df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
+        st.dataframe(df)
 # ======================
 # SEARCH / FILTER
 # ======================

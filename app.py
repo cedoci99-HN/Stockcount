@@ -10,7 +10,7 @@ from io import BytesIO
 st.set_page_config(page_title="Stock System", layout="centered")
 
 # ======================
-# CONNECT DB (NEON)
+# CONNECT DB
 # ======================
 conn = psycopg2.connect(
     "postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
@@ -30,6 +30,14 @@ CREATE TABLE IF NOT EXISTS users (
 """)
 
 c.execute("""
+CREATE TABLE IF NOT EXISTS employees (
+    emp_id TEXT PRIMARY KEY,
+    emp_name TEXT,
+    phone TEXT
+);
+""")
+
+c.execute("""
 CREATE TABLE IF NOT EXISTS item_master (
     itemkey TEXT PRIMARY KEY,
     description TEXT,
@@ -45,7 +53,15 @@ CREATE TABLE IF NOT EXISTS transactions (
     quantity FLOAT,
     location TEXT,
     created_by TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    counter_id TEXT,
+    counter_name TEXT,
+    counter_phone TEXT,
+
+    supervisor_id TEXT,
+    supervisor_name TEXT,
+    supervisor_phone TEXT
 );
 """)
 
@@ -58,7 +74,9 @@ CREATE TABLE IF NOT EXISTS logs (
 );
 """)
 
-# default admin
+# ======================
+# DEFAULT USERS
+# ======================
 c.execute("""
 INSERT INTO users (username,password,role) VALUES
 ('admin','123','admin'),
@@ -75,11 +93,28 @@ if "user" not in st.session_state:
     st.session_state.user = None
     st.session_state.role = None
 
+def split_emp(text):
+    emp_id = text.split(" - ")[0]
+    name = text.split(" - ")[1].split(" (")[0]
+    phone = text.split("(")[1].replace(")", "")
+    return emp_id, name, phone
+
 if not st.session_state.user:
     st.title("🔐 Login")
 
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
+
+    # load employee
+    df_emp = pd.read_sql("SELECT * FROM employees", conn)
+    emp_options = df_emp.apply(
+        lambda x: f"{x['emp_id']} - {x['emp_name']} ({x['phone']})", axis=1
+    ).tolist()
+
+    st.markdown("### 👷 Thông tin kiểm kê")
+
+    counter_select = st.selectbox("Counter", emp_options)
+    supervisor_select = st.selectbox("Supervisor", emp_options)
 
     if st.button("Login"):
         df = pd.read_sql(
@@ -88,17 +123,26 @@ if not st.session_state.user:
             params=(username, password)
         )
 
-        if not df.empty:
+        if not df.empty and counter_select and supervisor_select:
+
             st.session_state.user = username
             st.session_state.role = df.iloc[0]["role"]
 
-            c.execute("INSERT INTO logs (action, username) VALUES (%s,%s)",
-                      ("Login", username))
+            c_id, c_name, c_phone = split_emp(counter_select)
+            s_id, s_name, s_phone = split_emp(supervisor_select)
+
+            st.session_state.counter_id = c_id
+            st.session_state.counter = c_name
+            st.session_state.counter_phone = c_phone
+
+            st.session_state.supervisor_id = s_id
+            st.session_state.supervisor = s_name
+            st.session_state.supervisor_phone = s_phone
 
             st.success("Login success")
             st.rerun()
         else:
-            st.error("Sai tài khoản")
+            st.error("Thiếu thông tin")
 
     st.stop()
 
@@ -107,21 +151,74 @@ if not st.session_state.user:
 # ======================
 st.title(f"📦 Stock System - {st.session_state.user}")
 
+st.markdown(f"""
+👷 Counter: **{st.session_state.counter}**  
+🧑‍💼 Supervisor: **{st.session_state.supervisor}**
+""")
+
 if st.button("Logout"):
     st.session_state.user = None
     st.rerun()
+
+# ======================
+# ADMIN - USER MGMT
+# ======================
+if st.session_state.role == "admin":
+    st.markdown("## 👤 User Management")
+
+    df_users = pd.read_sql("SELECT * FROM users", conn)
+    st.dataframe(df_users)
+
+    new_user = st.text_input("Username")
+    new_pass = st.text_input("Password")
+    new_role = st.selectbox("Role", ["admin", "user"])
+
+    if st.button("Save User"):
+        c.execute("""
+        INSERT INTO users (username,password,role)
+        VALUES (%s,%s,%s)
+        ON CONFLICT (username) DO UPDATE
+        SET password=EXCLUDED.password,
+            role=EXCLUDED.role;
+        """, (new_user, new_pass, new_role))
+        st.success("Saved")
+
+# ======================
+# UPLOAD EMPLOYEE
+# ======================
+st.markdown("## 👷 Upload Employee")
+
+file_emp = st.file_uploader("Employee Excel", type=["xlsx"])
+
+if file_emp:
+    df_emp = pd.read_excel(file_emp)
+
+    if st.button("Save Employees"):
+        for _, row in df_emp.iterrows():
+            c.execute("""
+            INSERT INTO employees (emp_id, emp_name, phone)
+            VALUES (%s,%s,%s)
+            ON CONFLICT (emp_id) DO UPDATE
+            SET emp_name=EXCLUDED.emp_name,
+                phone=EXCLUDED.phone;
+            """, (
+                row["EmpID"],
+                row["Name"],
+                row["Phone"]
+            ))
+        st.success("Done")
 
 # ======================
 # UPLOAD ITEM MASTER
 # ======================
 st.markdown("## 📦 Upload Item Master")
 
-file = st.file_uploader("Upload Excel Item Master", type=["xlsx"])
+file = st.file_uploader("Item Master Excel", type=["xlsx"])
 
 if file:
     df_master = pd.read_excel(file)
 
-    if st.button("💾 Save Item Master"):
+    if st.button("Save Item Master"):
         for _, row in df_master.iterrows():
             c.execute("""
             INSERT INTO item_master (itemkey, description, unit)
@@ -134,17 +231,13 @@ if file:
                 row["Description"],
                 row["Unit"]
             ))
-
-        st.success("Upload thành công!")
+        st.success("Done")
 
 # ======================
-# LOAD ITEM LIST
+# LOAD ITEMS
 # ======================
 df_items = pd.read_sql("SELECT * FROM item_master", conn)
 
-# ======================
-# SEARCH FUNCTION
-# ======================
 def search_items(keyword):
     if not keyword:
         return df_items.head(50)
@@ -160,78 +253,42 @@ for i, tab in enumerate(tabs):
     with tab:
         st.subheader(forms[i])
 
-        if st.session_state.role != "viewer":
+        keyword = st.text_input("🔍 Search Item", key=f"s_{i}")
+        filtered = search_items(keyword)
 
-            # 🔍 SEARCH BOX
-            keyword = st.text_input("🔍 Search Item", key=f"search_{i}")
+        item = st.selectbox("Item", filtered["itemkey"].tolist(), key=f"i_{i}")
 
-            filtered = search_items(keyword)
+        barcode = st.text_input("📷 Barcode", key=f"b_{i}")
+        if barcode:
+            item = barcode
 
-            item = st.selectbox(
-                "Chọn Item",
-                filtered["itemkey"].tolist(),
-                key=f"item_{i}"
-            )
+        qty = st.number_input("Quantity", min_value=0.0, key=f"q_{i}")
+        loc = st.text_input("Location", key=f"l_{i}")
 
-            # 📷 BARCODE INPUT
-            barcode = st.text_input("📷 Scan Barcode", key=f"barcode_{i}")
+        if st.button("Save", key=f"save_{i}"):
+            c.execute("""
+            INSERT INTO transactions 
+            (form,itemkey,quantity,location,created_by,
+             counter_id,counter_name,counter_phone,
+             supervisor_id,supervisor_name,supervisor_phone)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                forms[i], item, qty, loc, st.session_state.user,
+                st.session_state.counter_id,
+                st.session_state.counter,
+                st.session_state.counter_phone,
+                st.session_state.supervisor_id,
+                st.session_state.supervisor,
+                st.session_state.supervisor_phone
+            ))
+            st.success("Saved")
 
-            if barcode:
-                item = barcode
+        df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
+        st.dataframe(df)
 
-            qty = st.number_input("Quantity", min_value=0.0, key=f"qty_{i}")
-            loc = st.text_input("Location", key=f"loc_{i}")
-
-            if st.button("💾 Save", key=f"save_{i}"):
-
-                if not item:
-                    st.error("Chọn Item")
-                else:
-                    c.execute("""
-                    INSERT INTO transactions (form,itemkey,quantity,location,created_by)
-                    VALUES (%s,%s,%s,%s,%s)
-                    """, (forms[i], item, qty, loc, st.session_state.user))
-
-                    c.execute("""
-                    INSERT INTO logs (action, username)
-                    VALUES (%s,%s)
-                    """, (f"Insert {forms[i]}", st.session_state.user))
-
-                    st.success(f"Saved: {item}")
-
-        # ======================
-        # FILTER
-        # ======================
-        st.markdown("### 🔍 Filter")
-
-        date_filter = st.date_input("Date", datetime.today(), key=f"d_{i}")
-        loc_filter = st.text_input("Location", key=f"l_{i}")
-        item_filter = st.text_input("Itemkey", key=f"f_{i}")
-
-        query = "SELECT * FROM transactions WHERE form=%s AND DATE(created_at)=%s"
-        params = [forms[i], date_filter]
-
-        if loc_filter:
-            query += " AND location=%s"
-            params.append(loc_filter)
-
-        if item_filter:
-            query += " AND itemkey=%s"
-            params.append(item_filter)
-
-        df = pd.read_sql(query, conn, params=params)
-
-        st.dataframe(df, use_container_width=True)
-
-        # EXPORT
         if not df.empty:
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("📥 CSV", csv, f"{forms[i]}.csv")
-
-            output = BytesIO()
-            df.to_excel(output, index=False, engine="openpyxl")
-
-            st.download_button("📥 Excel", output.getvalue(), f"{forms[i]}.xlsx")
+            csv = df.to_csv(index=False).encode()
+            st.download_button("CSV", csv)
 
 # ======================
 # DASHBOARD
@@ -239,15 +296,5 @@ for i, tab in enumerate(tabs):
 st.markdown("## 📊 Dashboard")
 
 df_all = pd.read_sql("SELECT * FROM transactions", conn)
-
 if not df_all.empty:
     st.bar_chart(df_all.groupby("form")["quantity"].sum())
-    st.bar_chart(df_all.groupby("location")["quantity"].sum())
-
-# ======================
-# LOG
-# ======================
-if st.session_state.role == "admin":
-    st.markdown("## 📜 Logs")
-    df_log = pd.read_sql("SELECT * FROM logs ORDER BY time DESC", conn)
-    st.dataframe(df_log, use_container_width=True)

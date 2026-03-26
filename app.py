@@ -190,6 +190,10 @@ if not st.session_state.get("user"):
             st.error("Sai tài khoản hoặc thiếu thông tin")
 
     st.stop()
+    
+#Thêm biến điều hướng (sau login)
+if "page" not in st.session_state:
+    st.session_state.page = "main"
 
 # ======================
 # HEADER
@@ -203,7 +207,30 @@ st.markdown(f"""
 if st.button("Logout", key="btn_logout"):
     st.session_state.user = None
     st.rerun()
+#Main page
+if st.session_state.page == "main":
+    st.markdown("## 🏠 Main Menu")
 
+    col1, col2, col3 = st.columns(3)
+
+    if col1.button("📥 Input Data"):
+        st.session_state.page = "input"
+        st.rerun()
+
+    if col2.button("🔎 Search"):
+        st.session_state.page = "search"
+        st.rerun()
+
+    if col3.button("📊 Dashboard"):
+        st.session_state.page = "dashboard"
+        st.rerun()
+
+    if st.session_state.role == "admin":
+        if st.button("⚙️ Admin Panel"):
+            st.session_state.page = "admin"
+            st.rerun()
+
+    st.stop()
 # ======================
 # LOCK STATUS DISPLAY
 # ======================
@@ -299,173 +326,202 @@ def search_items(keyword):
     if not keyword:
         return df_items.head(50)
     return df_items[df_items["itemkey"].str.contains(keyword, case=False)]
+    
+#PAGE INPUT (tabs của bạn)
+if st.session_state.page == "input":
 
-# ======================
-# FORMS
-# ======================
-forms = ["Component", "Scrap", "RM", "FG", "Regran"]
-tabs = st.tabs(forms)
+    if st.button("⬅️ Back"):
+        st.session_state.page = "main"
+        st.rerun()
 
-for i, tab in enumerate(tabs):
-    with tab:
-        st.subheader(forms[i])
-        keyword = st.text_input("🔍 Search Item", key=f"s_{i}")
-        filtered = search_items(keyword)
-        item = st.selectbox("Item", filtered["itemkey"].tolist(), key=f"i_{i}")
-        barcode = st.text_input("📷 Barcode", key=f"b_{i}")
-        if barcode:
-            item = barcode
-        qty = st.number_input("Quantity", min_value=0.0, key=f"q_{i}")
-        loc = st.text_input("Location", key=f"l_{i}")
-        
- # 🚫 BLOCK IF LOCKED
-        if locked and st.session_state.role != "admin":
-            st.warning("🔒 System locked - cannot input")
-        else:
-            if st.button("Save", key=f"save_btn_{forms[i]}_{i}"):
-                c.execute("""
-                INSERT INTO transactions 
-                (form,itemkey,quantity,location,created_by,
-                 counter_id,counter_name,counter_phone,
-                 supervisor_id,supervisor_name,supervisor_phone)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (
-                    forms[i], item, qty, loc, st.session_state.get('user',''),
-                    st.session_state.get('counter_id',''),
-                    st.session_state.get('counter',''),
-                    st.session_state.get('counter_phone',''),
-                    st.session_state.get('supervisor_id',''),
-                    st.session_state.get('supervisor',''),
-                    st.session_state.get('supervisor_phone','')
-                ))
-                st.success("Saved")
+    # ======================
+    # FORMS
+    # ======================
+    forms = ["Component", "Scrap", "RM", "FG", "Regran"]
+    tabs = st.tabs(forms)
 
-        # Hiển thị table với counter & supervisor đầy đủ
-        df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
-        st.dataframe(df)
+    for i, tab in enumerate(tabs):
+        with tab:
+            st.subheader(forms[i])
+            keyword = st.text_input("🔍 Search Item", key=f"s_{i}")
+            filtered = search_items(keyword)
+            item = st.selectbox("Item", filtered["itemkey"].tolist(), key=f"i_{i}")
+            barcode = st.text_input("📷 Barcode", key=f"b_{i}")
+            if barcode:
+                item = barcode
+            qty = st.number_input("Quantity", min_value=0.0, key=f"q_{i}")
+            loc = st.text_input("Location", key=f"l_{i}")
+            
+     # 🚫 BLOCK IF LOCKED
+            if locked and st.session_state.role != "admin":
+                st.warning("🔒 System locked - cannot input")
+            else:
+                if st.button("Save", key=f"save_btn_{forms[i]}_{i}"):
+                    c.execute("""
+                    INSERT INTO transactions 
+                    (form,itemkey,quantity,location,created_by,
+                     counter_id,counter_name,counter_phone,
+                     supervisor_id,supervisor_name,supervisor_phone)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    """, (
+                        forms[i], item, qty, loc, st.session_state.get('user',''),
+                        st.session_state.get('counter_id',''),
+                        st.session_state.get('counter',''),
+                        st.session_state.get('counter_phone',''),
+                        st.session_state.get('supervisor_id',''),
+                        st.session_state.get('supervisor',''),
+                        st.session_state.get('supervisor_phone','')
+                    ))
+                    st.success("Saved")
 
-        # Export CSV/Excel
-        if not df.empty:
-            csv = df.to_csv(index=False).encode("utf-8")
-            st.download_button("Download CSV", csv, file_name=f"{forms[i]}_transactions.csv", mime="text/csv")
+            # Hiển thị table với counter & supervisor đầy đủ
+            df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
+            st.dataframe(df)
 
+            # Export CSV/Excel
+            if not df.empty:
+                csv = df.to_csv(index=False).encode("utf-8")
+                st.download_button("Download CSV", csv, file_name=f"{forms[i]}_transactions.csv", mime="text/csv")
+
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df.to_excel(writer, index=False, sheet_name='Sheet1')
+                st.download_button(
+                    "Download Excel",
+                    output.getvalue(),
+                    file_name=f"{forms[i]}_transactions.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+#PAGE SEARCH
+if st.session_state.page == "search":
+
+    if st.button("⬅️ Back"):
+        st.session_state.page = "main"
+        st.rerun()
+
+    # ======================
+    # SEARCH / FILTER
+    # ======================
+    st.markdown("## 🔎 Search Transactions")
+
+    df_all = pd.read_sql("SELECT * FROM transactions", conn)
+
+    if not df_all.empty:
+        # Convert datetime
+        df_all["created_at"] = pd.to_datetime(df_all["created_at"])
+
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            date_from = st.date_input("From Date", value=df_all["created_at"].min().date())
+        with col2:
+            date_to = st.date_input("To Date", value=df_all["created_at"].max().date())
+        with col3:
+            users = ["All"] + df_all["created_by"].dropna().unique().tolist()
+            user_filter = st.selectbox("User", users)
+
+        # Apply filter
+        df_filter = df_all[
+            (df_all["created_at"].dt.date >= date_from) &
+            (df_all["created_at"].dt.date <= date_to)
+        ]
+
+        if user_filter != "All":
+            df_filter = df_filter[df_filter["created_by"] == user_filter]
+
+        st.dataframe(df_filter)
+
+        # Export sau khi filter
+        if not df_filter.empty:
+            # CSV
+            csv = df_filter.to_csv(index=False).encode("utf-8")
+            st.download_button(
+                "Download CSV (Filtered)",
+                csv,
+                file_name="filtered_transactions.csv",
+                mime="text/csv"
+            )
+
+            # Excel
             output = BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False, sheet_name='Sheet1')
+                df_filter.to_excel(writer, index=False, sheet_name='Filtered')
             st.download_button(
-                "Download Excel",
+                "Download Excel (Filtered)",
                 output.getvalue(),
-                file_name=f"{forms[i]}_transactions.xlsx",
+                file_name="filtered_transactions.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
-          
-# ======================
-# SEARCH / FILTER
-# ======================
-st.markdown("## 🔎 Search Transactions")
 
-df_all = pd.read_sql("SELECT * FROM transactions", conn)
-
-if not df_all.empty:
-    # Convert datetime
-    df_all["created_at"] = pd.to_datetime(df_all["created_at"])
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        date_from = st.date_input("From Date", value=df_all["created_at"].min().date())
-    with col2:
-        date_to = st.date_input("To Date", value=df_all["created_at"].max().date())
-    with col3:
-        users = ["All"] + df_all["created_by"].dropna().unique().tolist()
-        user_filter = st.selectbox("User", users)
-
-    # Apply filter
-    df_filter = df_all[
-        (df_all["created_at"].dt.date >= date_from) &
-        (df_all["created_at"].dt.date <= date_to)
-    ]
-
-    if user_filter != "All":
-        df_filter = df_filter[df_filter["created_by"] == user_filter]
-
-    st.dataframe(df_filter)
-
-    # Export sau khi filter
-    if not df_filter.empty:
-        # CSV
-        csv = df_filter.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "Download CSV (Filtered)",
-            csv,
-            file_name="filtered_transactions.csv",
-            mime="text/csv"
-        )
-
-        # Excel
-        output = BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_filter.to_excel(writer, index=False, sheet_name='Filtered')
-        st.download_button(
-            "Download Excel (Filtered)",
-            output.getvalue(),
-            file_name="filtered_transactions.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-else:
-    st.info("No data available")
-# ======================
-# DASHBOARD
-# ======================
-st.markdown("## 📊 Dashboard")
-df_all = pd.read_sql("SELECT * FROM transactions", conn)
-if not df_all.empty:
-    st.bar_chart(df_all.groupby("form")["quantity"].sum())
-    
-# ======================
-# ADMIN EDIT TRANSACTION
-# ======================
-if st.session_state.get("role") == "admin":
-    st.markdown("## ✏️ Edit Transaction (Admin)")
-
-    df_edit = pd.read_sql("SELECT * FROM transactions ORDER BY id DESC", conn)
-
-    if not df_edit.empty:
-        # chọn transaction
-        selected_id = st.selectbox("Chọn Transaction ID", df_edit["id"])
-
-        row = df_edit[df_edit["id"] == selected_id].iloc[0]
-
-        # hiển thị info cũ
-        st.markdown(f"""
-        **Item:** {row['itemkey']}  
-        **Form:** {row['form']}  
-        **Created by:** {row['created_by']}  
-        """)
-
-        # chỉnh sửa
-        new_qty = st.number_input("Quantity", value=float(row["quantity"]), key="edit_qty")
-        new_loc = st.text_input("Location", value=row["location"], key="edit_loc")
-
-        col1, col2 = st.columns(2)
-
-        # update
-        if col1.button("💾 Update Transaction"):
-            c.execute("""
-            UPDATE transactions
-            SET quantity=%s,
-                location=%s
-            WHERE id=%s
-            """, (new_qty, new_loc, selected_id))
-
-            st.success("✅ Updated successfully")
-            st.rerun()
-
-        # delete (optional)
-        if col2.button("🗑 Delete Transaction"):
-            c.execute("DELETE FROM transactions WHERE id=%s", (selected_id,))
-            st.warning("Deleted")
-            st.rerun()
     else:
-        st.info("No data to edit")
+        st.info("No data available")
+#PAGE DASHBOARD
+if st.session_state.page == "dashboard":
+
+    if st.button("⬅️ Back"):
+        st.session_state.page = "main"
+        st.rerun()
+
+    # ======================
+    # DASHBOARD
+    # ======================
+    st.markdown("## 📊 Dashboard")
+    df_all = pd.read_sql("SELECT * FROM transactions", conn)
+    if not df_all.empty:
+        st.bar_chart(df_all.groupby("form")["quantity"].sum())
+#PAGE ADMIN
+if st.session_state.page == "admin":
+
+    if st.button("⬅️ Back"):
+        st.session_state.page = "main"
+        st.rerun()
+
+    #st.markdown("## ⚙️ Admin Panel")
+
+    # 👉 user management + upload + edit transaction
+    # ======================
+    # ADMIN EDIT TRANSACTION
+    # ======================
+    if st.session_state.get("role") == "admin":
+        st.markdown("## ✏️ Edit Transaction (Admin)")
+
+        df_edit = pd.read_sql("SELECT * FROM transactions ORDER BY id DESC", conn)
+
+        if not df_edit.empty:
+            # chọn transaction
+            selected_id = st.selectbox("Chọn Transaction ID", df_edit["id"])
+
+            row = df_edit[df_edit["id"] == selected_id].iloc[0]
+
+            # hiển thị info cũ
+            st.markdown(f"""
+            **Item:** {row['itemkey']}  
+            **Form:** {row['form']}  
+            **Created by:** {row['created_by']}  
+            """)
+
+            # chỉnh sửa
+            new_qty = st.number_input("Quantity", value=float(row["quantity"]), key="edit_qty")
+            new_loc = st.text_input("Location", value=row["location"], key="edit_loc")
+
+            col1, col2 = st.columns(2)
+
+            # update
+            if col1.button("💾 Update Transaction"):
+                c.execute("""
+                UPDATE transactions
+                SET quantity=%s,
+                    location=%s
+                WHERE id=%s
+                """, (new_qty, new_loc, selected_id))
+
+                st.success("✅ Updated successfully")
+                st.rerun()
+
+            # delete (optional)
+            if col2.button("🗑 Delete Transaction"):
+                c.execute("DELETE FROM transactions WHERE id=%s", (selected_id,))
+                st.warning("Deleted")
+                st.rerun()
+        else:
+            st.info("No data to edit")

@@ -358,7 +358,7 @@ for i, tab in enumerate(tabs):
         if locked and st.session_state.role != "admin":
             st.warning("🔒 System locked - cannot input")
         else:
-            if st.button("Save", key=f"save_{i}"):
+            if st.button("Save", key=f"save_btn_{forms[i]}_{i}"):
                 c.execute("""
                 INSERT INTO transactions 
                 (form,itemkey,quantity,location,created_by,

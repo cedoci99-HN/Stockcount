@@ -231,92 +231,6 @@ if st.session_state.page == "main":
             st.rerun()
 
     st.stop()
-# ======================
-# LOCK STATUS DISPLAY
-# ======================
-locked = is_locked()
-
-if locked:
-    st.error("🔒 SYSTEM STATUS: LOCKED")
-else:
-    st.success("🔓 SYSTEM STATUS: UNLOCKED")
-
-# ======================
-# ADMIN LOCK CONTROL
-# ======================
-if st.session_state.role == "admin":
-    st.markdown("## 🔒 System Control")
-
-    col1, col2 = st.columns(2)
-
-    if col1.button("🔒 Lock System"):
-        set_lock(True)
-        st.rerun()
-
-    if col2.button("🔓 Unlock System"):
-        set_lock(False)
-        st.rerun()
-
-# ======================
-# ADMIN - USER MGMT & UPLOAD MASTER/EMP
-# ======================
-if st.session_state.get('role') == "admin":
-    st.markdown("## 👤 User Management")
-    df_users = pd.read_sql("SELECT * FROM users", conn)
-    st.dataframe(df_users)
-
-    new_user = st.text_input("Username", key="admin_new_user")
-    new_pass = st.text_input("Password", key="admin_new_pass")
-    new_role = st.selectbox("Role", ["admin", "user"], key="admin_new_role")
-    if st.button("Save User", key="btn_save_user"):
-        c.execute("""
-        INSERT INTO users (username,password,role)
-        VALUES (%s,%s,%s)
-        ON CONFLICT (username) DO UPDATE
-        SET password=EXCLUDED.password,
-            role=EXCLUDED.role;
-        """, (new_user, new_pass, new_role))
-        st.success("Saved")
-
-    # Upload Employee (admin only)
-    st.markdown("## 👷 Upload Employee")
-    file_emp = st.file_uploader("Employee Excel", type=["xlsx"], key="upl_emp")
-    if file_emp:
-        df_emp = pd.read_excel(file_emp)
-        if st.button("Save Employees", key="btn_save_emp"):
-            for _, row in df_emp.iterrows():
-                c.execute("""
-                INSERT INTO employees (emp_id, emp_name, phone)
-                VALUES (%s,%s,%s)
-                ON CONFLICT (emp_id) DO UPDATE
-                SET emp_name=EXCLUDED.emp_name,
-                    phone=EXCLUDED.phone;
-                """, (
-                    row["EmpID"],
-                    row["Name"],
-                    row["Phone"]
-                ))
-            st.success("Done")
-
-    # Upload Item Master (admin only)
-    st.markdown("## 📦 Upload Item Master")
-    file = st.file_uploader("Item Master Excel", type=["xlsx"], key="upl_item")
-    if file:
-        df_master = pd.read_excel(file)
-        if st.button("Save Item Master", key="btn_save_item"):
-            for _, row in df_master.iterrows():
-                c.execute("""
-                INSERT INTO item_master (itemkey, description, unit)
-                VALUES (%s,%s,%s)
-                ON CONFLICT (itemkey) DO UPDATE
-                SET description=EXCLUDED.description,
-                    unit=EXCLUDED.unit;
-                """, (
-                    row["Itemkey"],
-                    row["Description"],
-                    row["Unit"]
-                ))
-            st.success("Done")
 
 # ======================
 # LOAD ITEMS
@@ -479,6 +393,92 @@ if st.session_state.page == "admin":
     #st.markdown("## ⚙️ Admin Panel")
 
     # 👉 user management + upload + edit transaction
+    # ======================
+    # LOCK STATUS DISPLAY
+    # ======================
+    locked = is_locked()
+
+    if locked:
+        st.error("🔒 SYSTEM STATUS: LOCKED")
+    else:
+        st.success("🔓 SYSTEM STATUS: UNLOCKED")
+
+    # ======================
+    # ADMIN LOCK CONTROL
+    # ======================
+    if st.session_state.role == "admin":
+        st.markdown("## 🔒 System Control")
+
+        col1, col2 = st.columns(2)
+
+        if col1.button("🔒 Lock System"):
+            set_lock(True)
+            st.rerun()
+
+        if col2.button("🔓 Unlock System"):
+            set_lock(False)
+            st.rerun()
+
+    # ======================
+    # ADMIN - USER MGMT & UPLOAD MASTER/EMP
+    # ======================
+    if st.session_state.get('role') == "admin":
+        st.markdown("## 👤 User Management")
+        df_users = pd.read_sql("SELECT * FROM users", conn)
+        st.dataframe(df_users)
+
+        new_user = st.text_input("Username", key="admin_new_user")
+        new_pass = st.text_input("Password", key="admin_new_pass")
+        new_role = st.selectbox("Role", ["admin", "user"], key="admin_new_role")
+        if st.button("Save User", key="btn_save_user"):
+            c.execute("""
+            INSERT INTO users (username,password,role)
+            VALUES (%s,%s,%s)
+            ON CONFLICT (username) DO UPDATE
+            SET password=EXCLUDED.password,
+                role=EXCLUDED.role;
+            """, (new_user, new_pass, new_role))
+            st.success("Saved")
+
+        # Upload Employee (admin only)
+        st.markdown("## 👷 Upload Employee")
+        file_emp = st.file_uploader("Employee Excel", type=["xlsx"], key="upl_emp")
+        if file_emp:
+            df_emp = pd.read_excel(file_emp)
+            if st.button("Save Employees", key="btn_save_emp"):
+                for _, row in df_emp.iterrows():
+                    c.execute("""
+                    INSERT INTO employees (emp_id, emp_name, phone)
+                    VALUES (%s,%s,%s)
+                    ON CONFLICT (emp_id) DO UPDATE
+                    SET emp_name=EXCLUDED.emp_name,
+                        phone=EXCLUDED.phone;
+                    """, (
+                        row["EmpID"],
+                        row["Name"],
+                        row["Phone"]
+                    ))
+                st.success("Done")
+
+        # Upload Item Master (admin only)
+        st.markdown("## 📦 Upload Item Master")
+        file = st.file_uploader("Item Master Excel", type=["xlsx"], key="upl_item")
+        if file:
+            df_master = pd.read_excel(file)
+            if st.button("Save Item Master", key="btn_save_item"):
+                for _, row in df_master.iterrows():
+                    c.execute("""
+                    INSERT INTO item_master (itemkey, description, unit)
+                    VALUES (%s,%s,%s)
+                    ON CONFLICT (itemkey) DO UPDATE
+                    SET description=EXCLUDED.description,
+                        unit=EXCLUDED.unit;
+                    """, (
+                        row["Itemkey"],
+                        row["Description"],
+                        row["Unit"]
+                    ))
+                st.success("Done")
     # ======================
     # ADMIN EDIT TRANSACTION
     # ======================

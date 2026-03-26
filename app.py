@@ -22,6 +22,12 @@ c = conn.cursor()
 # CREATE TABLES
 # ======================
 c.execute("""
+CREATE TABLE IF NOT EXISTS location_master (
+    location TEXT PRIMARY KEY
+);
+""")
+
+c.execute("""
 CREATE TABLE IF NOT EXISTS users (
     username TEXT PRIMARY KEY,
     password TEXT,
@@ -246,6 +252,12 @@ def search_items(keyword):
     if not keyword:
         return df_items.head(50)
     return df_items[df_items["itemkey"].str.contains(keyword, case=False)]
+df_locations = pd.read_sql("SELECT * FROM location_master", conn)
+
+#LOAD LOCATION
+def get_locations():
+    df = pd.read_sql("SELECT * FROM location_master", conn)
+    return df["location"].tolist()
     
 #PAGE INPUT (tabs của bạn)
 if st.session_state.page == "input":
@@ -270,7 +282,14 @@ if st.session_state.page == "input":
             if barcode:
                 item = barcode
             qty = st.number_input("Quantity", min_value=0.0, key=f"q_{i}")
-            loc = st.text_input("Location", key=f"l_{i}")
+            #loc = st.text_input("Location", key=f"l_{i}")
+            locations = get_locations()
+
+            if locations:
+                loc = st.selectbox("Location", locations, key=f"l_{i}")
+            else:
+                st.warning("⚠️ No location available, please add in Admin")
+                loc = ""
             
      # 🚫 BLOCK IF LOCKED
             if locked and st.session_state.role != "admin":
@@ -522,3 +541,33 @@ if st.session_state.page == "admin":
                 st.rerun()
         else:
             st.info("No data to edit")
+    # ======================
+    # ADMIN - LOCATION MGMT
+    # ======================
+    if st.session_state.get("role") == "admin":
+        st.markdown("## 📍 Location Management")
+
+        df_loc = pd.read_sql("SELECT * FROM location_master", conn)
+        st.dataframe(df_loc)
+
+        new_loc = st.text_input("New Location", key="new_location")
+
+        col1, col2 = st.columns(2)
+
+        # ADD / UPDATE
+        if col1.button("💾 Save Location"):
+            if new_loc:
+                c.execute("""
+                INSERT INTO location_master (location)
+                VALUES (%s)
+                ON CONFLICT (location) DO NOTHING;
+                """, (new_loc,))
+                st.success("Saved")
+                st.rerun()
+
+        # DELETE
+        if col2.button("🗑 Delete Location"):
+            if new_loc:
+                c.execute("DELETE FROM location_master WHERE location=%s", (new_loc,))
+                st.warning("Deleted")
+                st.rerun()

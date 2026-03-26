@@ -61,10 +61,7 @@ CREATE TABLE IF NOT EXISTS transactions (
 """)
 c.execute("""
 INSERT INTO users (username,password,role) VALUES
-('admin','123','admin'),
-('user1','user1','user'),
-('user2','user2','user'),
-('user3','user3','user')
+('admin','123','admin')
 ON CONFLICT (username) DO NOTHING;
 """)
 
@@ -126,16 +123,16 @@ if not st.session_state.get("user"):
 
     # --------- Counter ---------
     st.markdown("#### Counter")
-    counter_choice = st.radio("Chọn kiểu nhập Counter:", ["Dropdown", "Gõ tay"], key="counter_type")
-    if counter_choice == "Dropdown" and emp_options:
+    counter_choice = st.radio("Chọn kiểu nhập Counter:", ["Chọn trong danh sách", "Gõ tay"], key="counter_type")
+    if counter_choice == "Chọn trong danh sách" and emp_options:
         counter_select = st.selectbox("Counter", emp_options, key="counter_select")
     else:
         counter_select = st.text_input("Counter (ID - Name (Phone))", key="counter_text")
 
     # --------- Supervisor ---------
     st.markdown("#### Supervisor")
-    supervisor_choice = st.radio("Chọn kiểu nhập Supervisor:", ["Dropdown", "Gõ tay"], key="supervisor_type")
-    if supervisor_choice == "Dropdown" and emp_options:
+    supervisor_choice = st.radio("Chọn kiểu nhập Supervisor:", ["Chọn trong danh sách", "Gõ tay"], key="supervisor_type")
+    if supervisor_choice == "Chọn trong danh sách" and emp_options:
         supervisor_select = st.selectbox("Supervisor", emp_options, key="supervisor_select")
     else:
         supervisor_select = st.text_input("Supervisor (ID - Name (Phone))", key="supervisor_text")

@@ -101,13 +101,21 @@ if not st.session_state.get("user"):
 
     st.markdown("### 👷 Thông tin ca kiểm kê")
 
-    # Nếu có nhân sự → dropdown, nếu chưa có → text input
-    if len(emp_options) > 0:
+    # --------- Counter ---------
+    st.markdown("#### Counter")
+    counter_choice = st.radio("Chọn kiểu nhập Counter:", ["Dropdown", "Gõ tay"], key="counter_type")
+    if counter_choice == "Dropdown" and emp_options:
         counter_select = st.selectbox("Counter", emp_options, key="counter_select")
+    else:
+        counter_select = st.text_input("Counter (ID - Name (Phone))", key="counter_text")
+
+    # --------- Supervisor ---------
+    st.markdown("#### Supervisor")
+    supervisor_choice = st.radio("Chọn kiểu nhập Supervisor:", ["Dropdown", "Gõ tay"], key="supervisor_type")
+    if supervisor_choice == "Dropdown" and emp_options:
         supervisor_select = st.selectbox("Supervisor", emp_options, key="supervisor_select")
     else:
-        counter_select = st.text_input("Counter (gõ tay: ID - Name (Phone))", key="counter_text")
-        supervisor_select = st.text_input("Supervisor (gõ tay: ID - Name (Phone))", key="supervisor_text")
+        supervisor_select = st.text_input("Supervisor (ID - Name (Phone))", key="supervisor_text")
 
     if st.button("Login", key="btn_login"):
         df = pd.read_sql(
@@ -120,23 +128,31 @@ if not st.session_state.get("user"):
             st.session_state.user = username
             st.session_state.role = df.iloc[0]["role"]
 
-            # Nếu chưa có trong bảng employees thì tự thêm
-            def add_emp(emp_text):
+            # Hàm thêm hoặc cập nhật nhân viên
+            def add_or_update_emp(emp_text):
                 if " - " in emp_text and "(" in emp_text:
                     emp_id, name, phone = split_emp(emp_text)
                     df_check = pd.read_sql("SELECT * FROM employees WHERE emp_id=%s", conn, params=(emp_id,))
                     if df_check.empty:
+                        # Thêm mới
                         c.execute("""
                         INSERT INTO employees (emp_id, emp_name, phone)
                         VALUES (%s,%s,%s)
                         """, (emp_id, name, phone))
+                    else:
+                        # Cập nhật nếu thông tin thay đổi
+                        if df_check.iloc[0]["emp_name"] != name or df_check.iloc[0]["phone"] != phone:
+                            c.execute("""
+                            UPDATE employees SET emp_name=%s, phone=%s
+                            WHERE emp_id=%s
+                            """, (name, phone, emp_id))
                     return emp_id, name, phone
                 else:
                     st.error("Nhập nhân sự phải theo format: ID - Name (Phone)")
                     st.stop()
 
-            c_id, c_name, c_phone = add_emp(counter_select)
-            s_id, s_name, s_phone = add_emp(supervisor_select)
+            c_id, c_name, c_phone = add_or_update_emp(counter_select)
+            s_id, s_name, s_phone = add_or_update_emp(supervisor_select)
 
             st.session_state.counter_id = c_id
             st.session_state.counter = c_name

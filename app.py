@@ -65,15 +65,6 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 """)
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS logs (
-    id SERIAL PRIMARY KEY,
-    action TEXT,
-    username TEXT,
-    time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-""")
-
 # ======================
 # DEFAULT USERS
 # ======================
@@ -108,8 +99,8 @@ def split_emp(text):
 # ======================
 if not st.session_state.get("user"):
     st.title("🔐 Login")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    username = st.text_input("Username", key="login_user")
+    password = st.text_input("Password", type="password", key="login_pass")
 
     # load employee
     df_emp = pd.read_sql("SELECT * FROM employees", conn)
@@ -121,13 +112,13 @@ if not st.session_state.get("user"):
 
     # Nếu có nhân sự → dropdown, nếu chưa có → text input
     if len(emp_options) > 0:
-        counter_select = st.selectbox("Counter", emp_options)
-        supervisor_select = st.selectbox("Supervisor", emp_options)
+        counter_select = st.selectbox("Counter", emp_options, key="counter_select")
+        supervisor_select = st.selectbox("Supervisor", emp_options, key="supervisor_select")
     else:
-        counter_select = st.text_input("Counter (gõ tay: ID - Name (Phone))")
-        supervisor_select = st.text_input("Supervisor (gõ tay: ID - Name (Phone))")
+        counter_select = st.text_input("Counter (gõ tay: ID - Name (Phone))", key="counter_text")
+        supervisor_select = st.text_input("Supervisor (gõ tay: ID - Name (Phone))", key="supervisor_text")
 
-    if st.button("Login"):
+    if st.button("Login", key="btn_login"):
         df = pd.read_sql(
             "SELECT * FROM users WHERE username=%s AND password=%s",
             conn,
@@ -181,7 +172,7 @@ st.markdown(f"""
 🧑‍💼 Supervisor: **{st.session_state.get('supervisor','')}**
 """)
 
-if st.button("Logout"):
+if st.button("Logout", key="btn_logout"):
     st.session_state.user = None
     st.rerun()
 
@@ -193,10 +184,10 @@ if st.session_state.get('role') == "admin":
     df_users = pd.read_sql("SELECT * FROM users", conn)
     st.dataframe(df_users)
 
-    new_user = st.text_input("Username")
-    new_pass = st.text_input("Password")
-    new_role = st.selectbox("Role", ["admin", "user"])
-    if st.button("Save User"):
+    new_user = st.text_input("Username", key="admin_new_user")
+    new_pass = st.text_input("Password", key="admin_new_pass")
+    new_role = st.selectbox("Role", ["admin", "user"], key="admin_new_role")
+    if st.button("Save User", key="btn_save_user"):
         c.execute("""
         INSERT INTO users (username,password,role)
         VALUES (%s,%s,%s)
@@ -210,10 +201,10 @@ if st.session_state.get('role') == "admin":
 # UPLOAD EMPLOYEE
 # ======================
 st.markdown("## 👷 Upload Employee")
-file_emp = st.file_uploader("Employee Excel", type=["xlsx"], key="emp")
+file_emp = st.file_uploader("Employee Excel", type=["xlsx"], key="upl_emp")
 if file_emp:
     df_emp = pd.read_excel(file_emp)
-    if st.button("Save Employees"):
+    if st.button("Save Employees", key="btn_save_emp"):
         for _, row in df_emp.iterrows():
             c.execute("""
             INSERT INTO employees (emp_id, emp_name, phone)
@@ -232,10 +223,10 @@ if file_emp:
 # UPLOAD ITEM MASTER
 # ======================
 st.markdown("## 📦 Upload Item Master")
-file = st.file_uploader("Item Master Excel", type=["xlsx"], key="item")
+file = st.file_uploader("Item Master Excel", type=["xlsx"], key="upl_item")
 if file:
     df_master = pd.read_excel(file)
-    if st.button("Save Item Master"):
+    if st.button("Save Item Master", key="btn_save_item"):
         for _, row in df_master.iterrows():
             c.execute("""
             INSERT INTO item_master (itemkey, description, unit)
@@ -302,7 +293,7 @@ for i, tab in enumerate(tabs):
         st.dataframe(df)
         if not df.empty:
             csv = df.to_csv(index=False).encode()
-            st.download_button("CSV", csv)
+            st.download_button("Download CSV", csv, key=f"download_{i}")
 
 # ======================
 # DASHBOARD

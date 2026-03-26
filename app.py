@@ -422,3 +422,50 @@ st.markdown("## 📊 Dashboard")
 df_all = pd.read_sql("SELECT * FROM transactions", conn)
 if not df_all.empty:
     st.bar_chart(df_all.groupby("form")["quantity"].sum())
+    
+# ======================
+# ADMIN EDIT TRANSACTION
+# ======================
+if st.session_state.get("role") == "admin":
+    st.markdown("## ✏️ Edit Transaction (Admin)")
+
+    df_edit = pd.read_sql("SELECT * FROM transactions ORDER BY id DESC", conn)
+
+    if not df_edit.empty:
+        # chọn transaction
+        selected_id = st.selectbox("Chọn Transaction ID", df_edit["id"])
+
+        row = df_edit[df_edit["id"] == selected_id].iloc[0]
+
+        # hiển thị info cũ
+        st.markdown(f"""
+        **Item:** {row['itemkey']}  
+        **Form:** {row['form']}  
+        **Created by:** {row['created_by']}  
+        """)
+
+        # chỉnh sửa
+        new_qty = st.number_input("Quantity", value=float(row["quantity"]), key="edit_qty")
+        new_loc = st.text_input("Location", value=row["location"], key="edit_loc")
+
+        col1, col2 = st.columns(2)
+
+        # update
+        if col1.button("💾 Update Transaction"):
+            c.execute("""
+            UPDATE transactions
+            SET quantity=%s,
+                location=%s
+            WHERE id=%s
+            """, (new_qty, new_loc, selected_id))
+
+            st.success("✅ Updated successfully")
+            st.rerun()
+
+        # delete (optional)
+        if col2.button("🗑 Delete Transaction"):
+            c.execute("DELETE FROM transactions WHERE id=%s", (selected_id,))
+            st.warning("Deleted")
+            st.rerun()
+    else:
+        st.info("No data to edit")

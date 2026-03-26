@@ -231,7 +231,16 @@ if st.session_state.page == "main":
             st.rerun()
 
     st.stop()
+# ======================
+# LOCK STATUS DISPLAY
+# ======================
+locked = is_locked()
 
+if locked:
+    st.error("🔒 SYSTEM STATUS: LOCKED")
+else:
+    st.success("🔓 SYSTEM STATUS: UNLOCKED")
+    
 # ======================
 # LOAD ITEMS
 # ======================
@@ -393,15 +402,6 @@ if st.session_state.page == "admin":
     #st.markdown("## ⚙️ Admin Panel")
 
     # 👉 user management + upload + edit transaction
-    # ======================
-    # LOCK STATUS DISPLAY
-    # ======================
-    locked = is_locked()
-
-    if locked:
-        st.error("🔒 SYSTEM STATUS: LOCKED")
-    else:
-        st.success("🔓 SYSTEM STATUS: UNLOCKED")
 
     # ======================
     # ADMIN LOCK CONTROL

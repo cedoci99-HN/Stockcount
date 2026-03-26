@@ -305,7 +305,62 @@ for i, tab in enumerate(tabs):
                 file_name=f"{forms[i]}_transactions.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
+# ======================
+# SEARCH / FILTER
+# ======================
+st.markdown("## 🔎 Search Transactions")
 
+df_all = pd.read_sql("SELECT * FROM transactions", conn)
+
+if not df_all.empty:
+    # Convert datetime
+    df_all["created_at"] = pd.to_datetime(df_all["created_at"])
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        date_from = st.date_input("From Date", value=df_all["created_at"].min().date())
+    with col2:
+        date_to = st.date_input("To Date", value=df_all["created_at"].max().date())
+    with col3:
+        users = ["All"] + df_all["created_by"].dropna().unique().tolist()
+        user_filter = st.selectbox("User", users)
+
+    # Apply filter
+    df_filter = df_all[
+        (df_all["created_at"].dt.date >= date_from) &
+        (df_all["created_at"].dt.date <= date_to)
+    ]
+
+    if user_filter != "All":
+        df_filter = df_filter[df_filter["created_by"] == user_filter]
+
+    st.dataframe(df_filter)
+
+    # Export sau khi filter
+    if not df_filter.empty:
+        # CSV
+        csv = df_filter.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "Download CSV (Filtered)",
+            csv,
+            file_name="filtered_transactions.csv",
+            mime="text/csv"
+        )
+
+        # Excel
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df_filter.to_excel(writer, index=False, sheet_name='Filtered')
+        st.download_button(
+            "Download Excel (Filtered)",
+            output.getvalue(),
+            file_name="filtered_transactions.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+else:
+    st.info("No data available")
 # ======================
 # DASHBOARD
 # ======================

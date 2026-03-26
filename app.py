@@ -65,15 +65,6 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 """)
 
-c.execute("""
-CREATE TABLE IF NOT EXISTS logs (
-    id SERIAL PRIMARY KEY,
-    action TEXT,
-    username TEXT,
-    time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-""")
-
 # ======================
 # DEFAULT USERS
 # ======================
@@ -97,6 +88,7 @@ if "user" not in st.session_state:
 # HELPER
 # ======================
 def split_emp(text):
+    """Chia chuỗi kiểu 'ID - Name (Phone)'"""
     emp_id = text.split(" - ")[0]
     name = text.split(" - ")[1].split(" (")[0]
     phone = text.split("(")[1].replace(")", "")
@@ -107,7 +99,6 @@ def split_emp(text):
 # ======================
 if not st.session_state.user:
     st.title("🔐 Login")
-
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
 
@@ -118,8 +109,14 @@ if not st.session_state.user:
     ).tolist()
 
     st.markdown("### 👷 Thông tin ca kiểm kê")
-    counter_select = st.selectbox("Counter", emp_options)
-    supervisor_select = st.selectbox("Supervisor", emp_options)
+
+    # Nếu có nhân sự → dropdown, nếu chưa có → text input
+    if len(emp_options) > 0:
+        counter_select = st.selectbox("Counter", emp_options)
+        supervisor_select = st.selectbox("Supervisor", emp_options)
+    else:
+        counter_select = st.text_input("Counter (gõ tay: ID - Name (Phone))")
+        supervisor_select = st.text_input("Supervisor (gõ tay: ID - Name (Phone))")
 
     if st.button("Login"):
         df = pd.read_sql(
@@ -132,8 +129,24 @@ if not st.session_state.user:
             st.session_state.user = username
             st.session_state.role = df.iloc[0]["role"]
 
-            c_id, c_name, c_phone = split_emp(counter_select)
-            s_id, s_name, s_phone = split_emp(supervisor_select)
+            # Nếu chưa có trong bảng employees thì tự thêm
+            def add_emp(emp_text):
+                if " - " in emp_text and "(" in emp_text:
+                    emp_id, name, phone = split_emp(emp_text)
+                    # kiểm tra có chưa
+                    df_check = pd.read_sql("SELECT * FROM employees WHERE emp_id=%s", conn, params=(emp_id,))
+                    if df_check.empty:
+                        c.execute("""
+                        INSERT INTO employees (emp_id, emp_name, phone)
+                        VALUES (%s,%s,%s)
+                        """, (emp_id, name, phone))
+                    return emp_id, name, phone
+                else:
+                    st.error("Nhập nhân sự phải theo format: ID - Name (Phone)")
+                    st.stop()
+
+            c_id, c_name, c_phone = add_emp(counter_select)
+            s_id, s_name, s_phone = add_emp(supervisor_select)
 
             st.session_state.counter_id = c_id
             st.session_state.counter = c_name
@@ -146,7 +159,7 @@ if not st.session_state.user:
             st.success("Login success")
             st.rerun()
         else:
-            st.error("Thiếu thông tin hoặc sai tài khoản")
+            st.error("Sai tài khoản hoặc thiếu thông tin")
 
     st.stop()
 

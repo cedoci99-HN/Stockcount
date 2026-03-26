@@ -28,6 +28,15 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT
 );
 """)
+c.execute("""
+ALTER TABLE transactions
+ADD COLUMN IF NOT EXISTS counter_id TEXT,
+ADD COLUMN IF NOT EXISTS counter_name TEXT,
+ADD COLUMN IF NOT EXISTS counter_phone TEXT,
+ADD COLUMN IF NOT EXISTS supervisor_id TEXT,
+ADD COLUMN IF NOT EXISTS supervisor_name TEXT,
+ADD COLUMN IF NOT EXISTS supervisor_phone TEXT;
+""")
 
 c.execute("""
 CREATE TABLE IF NOT EXISTS employees (

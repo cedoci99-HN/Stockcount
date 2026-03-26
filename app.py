@@ -29,23 +29,12 @@ CREATE TABLE IF NOT EXISTS users (
 );
 """)
 c.execute("""
-ALTER TABLE transactions
-ADD COLUMN IF NOT EXISTS counter_id TEXT,
-ADD COLUMN IF NOT EXISTS counter_name TEXT,
-ADD COLUMN IF NOT EXISTS counter_phone TEXT,
-ADD COLUMN IF NOT EXISTS supervisor_id TEXT,
-ADD COLUMN IF NOT EXISTS supervisor_name TEXT,
-ADD COLUMN IF NOT EXISTS supervisor_phone TEXT;
-""")
-
-c.execute("""
 CREATE TABLE IF NOT EXISTS employees (
     emp_id TEXT PRIMARY KEY,
     emp_name TEXT,
     phone TEXT
 );
 """)
-
 c.execute("""
 CREATE TABLE IF NOT EXISTS item_master (
     itemkey TEXT PRIMARY KEY,
@@ -53,7 +42,6 @@ CREATE TABLE IF NOT EXISTS item_master (
     unit TEXT
 );
 """)
-
 c.execute("""
 CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
@@ -63,20 +51,14 @@ CREATE TABLE IF NOT EXISTS transactions (
     location TEXT,
     created_by TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-
     counter_id TEXT,
     counter_name TEXT,
     counter_phone TEXT,
-
     supervisor_id TEXT,
     supervisor_name TEXT,
     supervisor_phone TEXT
 );
 """)
-
-# ======================
-# DEFAULT USERS
-# ======================
 c.execute("""
 INSERT INTO users (username,password,role) VALUES
 ('admin','123','admin'),
@@ -142,7 +124,6 @@ if not st.session_state.get("user"):
             def add_emp(emp_text):
                 if " - " in emp_text and "(" in emp_text:
                     emp_id, name, phone = split_emp(emp_text)
-                    # kiểm tra có chưa
                     df_check = pd.read_sql("SELECT * FROM employees WHERE emp_id=%s", conn, params=(emp_id,))
                     if df_check.empty:
                         c.execute("""
@@ -160,7 +141,6 @@ if not st.session_state.get("user"):
             st.session_state.counter_id = c_id
             st.session_state.counter = c_name
             st.session_state.counter_phone = c_phone
-
             st.session_state.supervisor_id = s_id
             st.session_state.supervisor = s_name
             st.session_state.supervisor_phone = s_phone
@@ -186,7 +166,7 @@ if st.button("Logout", key="btn_logout"):
     st.rerun()
 
 # ======================
-# ADMIN - USER MGMT
+# ADMIN - USER MGMT & UPLOAD MASTER/EMP
 # ======================
 if st.session_state.get('role') == "admin":
     st.markdown("## 👤 User Management")
@@ -206,49 +186,45 @@ if st.session_state.get('role') == "admin":
         """, (new_user, new_pass, new_role))
         st.success("Saved")
 
-# ======================
-# UPLOAD EMPLOYEE
-# ======================
-st.markdown("## 👷 Upload Employee")
-file_emp = st.file_uploader("Employee Excel", type=["xlsx"], key="upl_emp")
-if file_emp:
-    df_emp = pd.read_excel(file_emp)
-    if st.button("Save Employees", key="btn_save_emp"):
-        for _, row in df_emp.iterrows():
-            c.execute("""
-            INSERT INTO employees (emp_id, emp_name, phone)
-            VALUES (%s,%s,%s)
-            ON CONFLICT (emp_id) DO UPDATE
-            SET emp_name=EXCLUDED.emp_name,
-                phone=EXCLUDED.phone;
-            """, (
-                row["EmpID"],
-                row["Name"],
-                row["Phone"]
-            ))
-        st.success("Done")
+    # Upload Employee (admin only)
+    st.markdown("## 👷 Upload Employee")
+    file_emp = st.file_uploader("Employee Excel", type=["xlsx"], key="upl_emp")
+    if file_emp:
+        df_emp = pd.read_excel(file_emp)
+        if st.button("Save Employees", key="btn_save_emp"):
+            for _, row in df_emp.iterrows():
+                c.execute("""
+                INSERT INTO employees (emp_id, emp_name, phone)
+                VALUES (%s,%s,%s)
+                ON CONFLICT (emp_id) DO UPDATE
+                SET emp_name=EXCLUDED.emp_name,
+                    phone=EXCLUDED.phone;
+                """, (
+                    row["EmpID"],
+                    row["Name"],
+                    row["Phone"]
+                ))
+            st.success("Done")
 
-# ======================
-# UPLOAD ITEM MASTER
-# ======================
-st.markdown("## 📦 Upload Item Master")
-file = st.file_uploader("Item Master Excel", type=["xlsx"], key="upl_item")
-if file:
-    df_master = pd.read_excel(file)
-    if st.button("Save Item Master", key="btn_save_item"):
-        for _, row in df_master.iterrows():
-            c.execute("""
-            INSERT INTO item_master (itemkey, description, unit)
-            VALUES (%s,%s,%s)
-            ON CONFLICT (itemkey) DO UPDATE
-            SET description=EXCLUDED.description,
-                unit=EXCLUDED.unit;
-            """, (
-                row["Itemkey"],
-                row["Description"],
-                row["Unit"]
-            ))
-        st.success("Done")
+    # Upload Item Master (admin only)
+    st.markdown("## 📦 Upload Item Master")
+    file = st.file_uploader("Item Master Excel", type=["xlsx"], key="upl_item")
+    if file:
+        df_master = pd.read_excel(file)
+        if st.button("Save Item Master", key="btn_save_item"):
+            for _, row in df_master.iterrows():
+                c.execute("""
+                INSERT INTO item_master (itemkey, description, unit)
+                VALUES (%s,%s,%s)
+                ON CONFLICT (itemkey) DO UPDATE
+                SET description=EXCLUDED.description,
+                    unit=EXCLUDED.unit;
+                """, (
+                    row["Itemkey"],
+                    row["Description"],
+                    row["Unit"]
+                ))
+            st.success("Done")
 
 # ======================
 # LOAD ITEMS
@@ -268,15 +244,12 @@ tabs = st.tabs(forms)
 for i, tab in enumerate(tabs):
     with tab:
         st.subheader(forms[i])
-
         keyword = st.text_input("🔍 Search Item", key=f"s_{i}")
         filtered = search_items(keyword)
-
         item = st.selectbox("Item", filtered["itemkey"].tolist(), key=f"i_{i}")
         barcode = st.text_input("📷 Barcode", key=f"b_{i}")
         if barcode:
             item = barcode
-
         qty = st.number_input("Quantity", min_value=0.0, key=f"q_{i}")
         loc = st.text_input("Location", key=f"l_{i}")
 
@@ -298,11 +271,20 @@ for i, tab in enumerate(tabs):
             ))
             st.success("Saved")
 
+        # Hiển thị table với counter & supervisor đầy đủ
         df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
         st.dataframe(df)
+
+        # Export CSV/Excel
         if not df.empty:
-            csv = df.to_csv(index=False).encode()
-            st.download_button("Download CSV", csv, key=f"download_{i}")
+            csv = df.to_csv(index=False).encode("utf-8")
+            st.download_button("Download CSV", csv, file_name=f"{forms[i]}_transactions.csv", mime="text/csv")
+            
+            # Export Excel
+            output = BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df.to_excel(writer, index=False, sheet_name='Sheet1')
+            st.download_button("Download Excel", output.getvalue(), file_name=f"{forms[i]}_transactions.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 # ======================
 # DASHBOARD

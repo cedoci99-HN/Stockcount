@@ -48,6 +48,25 @@ CREATE TABLE IF NOT EXISTS item_master (
     unit TEXT
 );
 """)
+
+c.execute("""
+CREATE TABLE IF NOT EXISTS transactions_draft (
+    id SERIAL PRIMARY KEY,
+    form TEXT,
+    itemkey TEXT,
+    quantity FLOAT,
+    location TEXT,
+    created_by TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    counter_id TEXT,
+    counter_name TEXT,
+    counter_phone TEXT,
+    supervisor_id TEXT,
+    supervisor_name TEXT,
+    supervisor_phone TEXT
+);
+""")
+
 c.execute("""
 CREATE TABLE IF NOT EXISTS transactions (
     id SERIAL PRIMARY KEY,
@@ -297,7 +316,7 @@ if st.session_state.page == "input":
             else:
                 if st.button("Save", key=f"save_btn_{forms[i]}_{i}"):
                     c.execute("""
-                    INSERT INTO transactions 
+                    INSERT INTO transactions_draft
                     (form,itemkey,quantity,location,created_by,
                      counter_id,counter_name,counter_phone,
                      supervisor_id,supervisor_name,supervisor_phone)
@@ -314,9 +333,55 @@ if st.session_state.page == "input":
                     st.success("Saved")
 
             # Hiển thị table với counter & supervisor đầy đủ
-            df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
+            #df = pd.read_sql(f"SELECT * FROM transactions WHERE form='{forms[i]}'", conn)
+            df = pd.read_sql(f"""
+            SELECT * FROM transactions_draft 
+            WHERE form='{forms[i]}' 
+            AND created_by='{st.session_state.get("user","")}'
+            """, conn)
+            #Hiển thị số dòng draft để user biết
+            st.info(f"📊 Draft records: {len(df)}")
+            
             st.dataframe(df)
+            #CHO PHÉP SỬA / XÓA NGAY TẠI INPUT
+            if not df.empty:
+                st.markdown("### ✏️ Edit Draft")
 
+                selected_id = st.selectbox(
+                    "Chọn dòng",
+                    df["id"],
+                    key=f"edit_id_{i}"
+                )
+
+                row = df[df["id"] == selected_id].iloc[0]
+
+                new_qty = st.number_input(
+                    "Edit Quantity",
+                    value=float(row["quantity"]),
+                    key=f"edit_qty_{i}"
+                )
+
+                new_loc = st.text_input(
+                    "Edit Location",
+                    value=row["location"],
+                    key=f"edit_loc_{i}"
+                )
+
+                col1, col2 = st.columns(2)
+
+                if col1.button("💾 Update Draft", key=f"upd_{i}"):
+                    c.execute("""
+                    UPDATE transactions_draft
+                    SET quantity=%s, location=%s
+                    WHERE id=%s
+                    """, (new_qty, new_loc, selected_id))
+                    st.success("Updated")
+                    st.rerun()
+
+                if col2.button("🗑 Delete Draft", key=f"del_{i}"):
+                    c.execute("DELETE FROM transactions_draft WHERE id=%s", (selected_id,))
+                    st.warning("Deleted")
+                    st.rerun()
             # Export CSV/Excel
             if not df.empty:
                 csv = df.to_csv(index=False).encode("utf-8")
@@ -331,6 +396,44 @@ if st.session_state.page == "input":
                     file_name=f"{forms[i]}_transactions.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
+#NÚT SUBMIT (QUAN TRỌNG NHẤT) Thêm cuối mỗi tab (hoặc cuối page input)
+st.markdown("## 🚀 Submit Data")
+
+confirm = st.checkbox(
+    "I confirm data is correct",
+    key=f"confirm_{i}"
+)
+
+if st.button("✅ Submit All Draft", key=f"submit_{i}"):
+
+    if not confirm:
+        st.warning("⚠️ Please confirm before submit")
+        st.stop()
+
+    # copy sang bảng chính
+    c.execute("""
+    INSERT INTO transactions (
+        form,itemkey,quantity,location,created_by,
+        counter_id,counter_name,counter_phone,
+        supervisor_id,supervisor_name,supervisor_phone
+    )
+    SELECT 
+        form,itemkey,quantity,location,created_by,
+        counter_id,counter_name,counter_phone,
+        supervisor_id,supervisor_name,supervisor_phone
+    FROM transactions_draft
+    WHERE created_by=%s
+    """, (st.session_state.get("user",""),))
+
+    # xóa draft
+    c.execute("""
+    DELETE FROM transactions_draft
+    WHERE created_by=%s
+    """, (st.session_state.get("user",""),))
+
+    st.success("🎉 Submitted successfully!")
+    st.rerun()
+    
 #PAGE SEARCH
 if st.session_state.page == "search":
 

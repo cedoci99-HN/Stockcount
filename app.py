@@ -13,7 +13,7 @@ st.set_page_config(page_title="Stock System", layout="centered")
 # CONNECT DB
 # ======================
 conn = psycopg2.connect(
-    "postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    "postgresql://neondb_owner:YOUR_NEW_PASSWORD@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
 )
 conn.autocommit = True
 c = conn.cursor()
@@ -65,6 +65,15 @@ CREATE TABLE IF NOT EXISTS transactions (
 );
 """)
 
+c.execute("""
+CREATE TABLE IF NOT EXISTS logs (
+    id SERIAL PRIMARY KEY,
+    action TEXT,
+    username TEXT,
+    time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+""")
+
 # ======================
 # DEFAULT USERS
 # ======================
@@ -97,7 +106,7 @@ def split_emp(text):
 # ======================
 # LOGIN
 # ======================
-if not st.session_state.user:
+if not st.session_state.get("user"):
     st.title("🔐 Login")
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
@@ -166,10 +175,10 @@ if not st.session_state.user:
 # ======================
 # HEADER
 # ======================
-st.title(f"📦 Stock System - {st.session_state.user}")
+st.title(f"📦 Stock System - {st.session_state.get('user','')}")
 st.markdown(f"""
-👷 Counter: **{st.session_state.counter}**  
-🧑‍💼 Supervisor: **{st.session_state.supervisor}**
+👷 Counter: **{st.session_state.get('counter','')}**  
+🧑‍💼 Supervisor: **{st.session_state.get('supervisor','')}**
 """)
 
 if st.button("Logout"):
@@ -179,7 +188,7 @@ if st.button("Logout"):
 # ======================
 # ADMIN - USER MGMT
 # ======================
-if st.session_state.role == "admin":
+if st.session_state.get('role') == "admin":
     st.markdown("## 👤 User Management")
     df_users = pd.read_sql("SELECT * FROM users", conn)
     st.dataframe(df_users)
@@ -279,13 +288,13 @@ for i, tab in enumerate(tabs):
              supervisor_id,supervisor_name,supervisor_phone)
             VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
-                forms[i], item, qty, loc, st.session_state.user,
-                st.session_state.counter_id,
-                st.session_state.counter,
-                st.session_state.counter_phone,
-                st.session_state.supervisor_id,
-                st.session_state.supervisor,
-                st.session_state.supervisor_phone
+                forms[i], item, qty, loc, st.session_state.get('user',''),
+                st.session_state.get('counter_id',''),
+                st.session_state.get('counter',''),
+                st.session_state.get('counter_phone',''),
+                st.session_state.get('supervisor_id',''),
+                st.session_state.get('supervisor',''),
+                st.session_state.get('supervisor_phone','')
             ))
             st.success("Saved")
 

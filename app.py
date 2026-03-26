@@ -401,7 +401,8 @@ st.markdown("## 🚀 Submit Data")
 
 confirm = st.checkbox(
     "I confirm data is correct",
-    key=f"confirm_{i}"
+    #key=f"confirm_{i}"
+    key="confirm_admin"
 )
 
 if st.button("✅ Submit All Draft", key=f"submit_{i}"):

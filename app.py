@@ -13,7 +13,7 @@ st.set_page_config(page_title="Stock System", layout="centered")
 # CONNECT DB
 # ======================
 conn = psycopg2.connect(
-    "postgresql://neondb_owner:npg_wILnY7suT1Pd@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+    "postgresql://neondb_owner:mypassword@ep-weathered-surf-a1c5jl7b-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
 )
 conn.autocommit = True
 c = conn.cursor()
@@ -279,12 +279,16 @@ for i, tab in enumerate(tabs):
         if not df.empty:
             csv = df.to_csv(index=False).encode("utf-8")
             st.download_button("Download CSV", csv, file_name=f"{forms[i]}_transactions.csv", mime="text/csv")
-            
-            # Export Excel
+
             output = BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 df.to_excel(writer, index=False, sheet_name='Sheet1')
-            st.download_button("Download Excel", output.getvalue(), file_name=f"{forms[i]}_transactions.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            st.download_button(
+                "Download Excel",
+                output.getvalue(),
+                file_name=f"{forms[i]}_transactions.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            )
 
 # ======================
 # DASHBOARD

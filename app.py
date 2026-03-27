@@ -396,45 +396,45 @@ if st.session_state.page == "input":
                     file_name=f"{forms[i]}_transactions.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
-#NÚT SUBMIT (QUAN TRỌNG NHẤT) Thêm cuối mỗi tab (hoặc cuối page input)
-st.markdown("## 🚀 Submit Data")
+    #NÚT SUBMIT (QUAN TRỌNG NHẤT) Thêm cuối mỗi tab (hoặc cuối page input)
+    st.markdown("## 🚀 Submit Data")
 
-confirm = st.checkbox(
-    "I confirm data is correct",
-    #key=f"confirm_{i}"
-    key="confirm_admin"
-)
-
-#if st.button("✅ Submit All Draft", key=f"submit_{i}"):
-if st.button("✅ Submit All Draft", key="submit_admin"):
-    
-    if not confirm:
-        st.warning("⚠️ Please confirm before submit")
-        st.stop()
-
-    # copy sang bảng chính
-    c.execute("""
-    INSERT INTO transactions (
-        form,itemkey,quantity,location,created_by,
-        counter_id,counter_name,counter_phone,
-        supervisor_id,supervisor_name,supervisor_phone
+    confirm = st.checkbox(
+        "I confirm data is correct",
+        #key=f"confirm_{i}"
+        key="confirm_admin"
     )
-    SELECT 
-        form,itemkey,quantity,location,created_by,
-        counter_id,counter_name,counter_phone,
-        supervisor_id,supervisor_name,supervisor_phone
-    FROM transactions_draft
-    WHERE created_by=%s
-    """, (st.session_state.get("user",""),))
 
-    # xóa draft
-    c.execute("""
-    DELETE FROM transactions_draft
-    WHERE created_by=%s
-    """, (st.session_state.get("user",""),))
+    #if st.button("✅ Submit All Draft", key=f"submit_{i}"):
+    if st.button("✅ Submit All Draft", key="submit_admin"):
+        
+        if not confirm:
+            st.warning("⚠️ Please confirm before submit")
+            st.stop()
 
-    st.success("🎉 Submitted successfully!")
-    st.rerun()
+        # copy sang bảng chính
+        c.execute("""
+        INSERT INTO transactions (
+            form,itemkey,quantity,location,created_by,
+            counter_id,counter_name,counter_phone,
+            supervisor_id,supervisor_name,supervisor_phone
+        )
+        SELECT 
+            form,itemkey,quantity,location,created_by,
+            counter_id,counter_name,counter_phone,
+            supervisor_id,supervisor_name,supervisor_phone
+        FROM transactions_draft
+        WHERE created_by=%s
+        """, (st.session_state.get("user",""),))
+
+        # xóa draft
+        c.execute("""
+        DELETE FROM transactions_draft
+        WHERE created_by=%s
+        """, (st.session_state.get("user",""),))
+
+        st.success("🎉 Submitted successfully!")
+        st.rerun()
     
 #PAGE SEARCH
 if st.session_state.page == "search":
